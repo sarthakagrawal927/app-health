@@ -1,0 +1,30 @@
+{
+  "name": "app-health",
+  "version": "0.0.0",
+  "private": true,
+  "description": "App Health V0 — endpoint health for Go and Node applications.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "pnpm --silent run format:check && pnpm --silent run lint && pnpm --silent run typecheck && pnpm --silent run test && pnpm --silent run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "pnpm --silent -r run typecheck",
+    "test": "pnpm --silent -r run test",
+    "build": "pnpm --silent -r run build",
+    "clean": "pnpm --silent -r exec rimraf dist .turbo *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.20.0"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+dist
+.turbo
+coverage
+pnpm-lock.yaml
+packages/go
+openspec
+.codex
+.github
+AGENTS.md
+PROJECT_STATUS.md

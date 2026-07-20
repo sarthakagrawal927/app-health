@@ -7,3 +7,6 @@ dist/
 *.log
 *.db
 *.db-journal
+*.tsbuildinfo
+.turbo/
+coverage/

@@ -1,0 +1,189 @@
+import { describe, expect, it } from 'vitest';
+import {
+  areEndpointEquivalent,
+  buildCanonicalBatch,
+  goBatchFixture,
+  healthState,
+  nodeBatchFixture,
+  validateBatch,
+  EventBatchV1,
+  EventV1,
+  SEED_BUCKETS,
+  seededAggregateResponse,
+  mergeBuckets,
+  approximatePercentiles,
+  MAX_BATCH_EVENTS,
+  MAX_ROUTE_LENGTH,
+  SCHEMA_VERSION,
+} from '../src/index.js';
+
+describe('event batch validation', () => {
+  it('accepts the canonical Node fixture', () => {
+    const result = validateBatch(nodeBatchFixture());
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts the canonical Go fixture', () => {
+    const result = validateBatch(goBatchFixture());
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects an unknown schema version', () => {
+    const batch = nodeBatchFixture();
+    const result = validateBatch({ ...batch, schema_version: 'v2' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects an empty batch', () => {
+    const batch = nodeBatchFixture();
+    const result = validateBatch({ ...batch, events: [] });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a batch exceeding MAX_BATCH_EVENTS', () => {
+    const base = nodeBatchFixture();
+    const events = Array.from({ length: MAX_BATCH_EVENTS + 1 }, (_, i) => ({
+      ...base.events[0],
+      event_id: `00000000-0000-4000-a000-00000000${i.toString().padStart(8, '0')}`,
+      timestamp: base.events[0].timestamp + i,
+    }));
+    const result = validateBatch({ ...base, events });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a route that does not start with /', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].route = 'users/:id';
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a route exceeding MAX_ROUTE_LENGTH', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].route = '/' + 'a'.repeat(MAX_ROUTE_LENGTH);
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a non-uuid event_id', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].event_id = 'not-a-uuid';
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects an out-of-range status code', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].status_code = 99;
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a negative duration', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].duration_ms = -1;
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a method with non-letter characters', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].method = 'G3T';
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(false);
+  });
+
+  it('normalizes a lowercase method to uppercase before validation', () => {
+    const batch = nodeBatchFixture();
+    batch.events[0].method = 'get';
+    const result = validateBatch(batch);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.batch.events[0].method).toBe('GET');
+  });
+});
+
+describe('canonical fixture equivalence', () => {
+  it('Node and Go fixtures are endpoint-equivalent', () => {
+    expect(areEndpointEquivalent(nodeBatchFixture(), goBatchFixture())).toBe(true);
+  });
+
+  it('buildCanonicalBatch produces a parseable batch for each runtime', () => {
+    for (const runtime of ['node', 'go'] as const) {
+      const batch = buildCanonicalBatch(runtime);
+      expect(EventBatchV1.safeParse(batch).success).toBe(true);
+      expect(batch.runtime).toBe(runtime);
+    }
+  });
+
+  it('each event in the canonical batch parses individually', () => {
+    const batch = nodeBatchFixture();
+    for (const event of batch.events) {
+      expect(EventV1.safeParse(event).success).toBe(true);
+    }
+  });
+});
+
+describe('health state calculation', () => {
+  it('labels low volume as insufficient-data regardless of p95', () => {
+    expect(healthState({ request_count: 10, error_rate: 0.5, p95_ms: 5000 })).toBe(
+      'insufficient-data',
+    );
+  });
+
+  it('labels healthy below degraded thresholds', () => {
+    expect(healthState({ request_count: 100, error_rate: 0, p95_ms: 100 })).toBe('healthy');
+  });
+
+  it('labels degraded at error rate >= 1%', () => {
+    expect(healthState({ request_count: 100, error_rate: 0.01, p95_ms: 100 })).toBe('degraded');
+  });
+
+  it('labels degraded at p95 >= 1000ms', () => {
+    expect(healthState({ request_count: 100, error_rate: 0, p95_ms: 1000 })).toBe('degraded');
+  });
+
+  it('labels unhealthy at error rate >= 5%', () => {
+    expect(healthState({ request_count: 100, error_rate: 0.05, p95_ms: 100 })).toBe('unhealthy');
+  });
+
+  it('labels unhealthy at p95 >= 2000ms', () => {
+    expect(healthState({ request_count: 100, error_rate: 0, p95_ms: 2000 })).toBe('unhealthy');
+  });
+});
+
+describe('seeded endpoint metrics', () => {
+  it('exposes a non-empty set of seeded buckets', () => {
+    expect(SEED_BUCKETS.length).toBeGreaterThan(0);
+  });
+
+  it('produces an aggregate response with deterministic endpoints', () => {
+    const response = seededAggregateResponse('15m');
+    expect(response.window).toBe('15m');
+    expect(response.endpoints.length).toBeGreaterThan(0);
+    for (const e of response.endpoints) {
+      expect(e.method.length).toBeGreaterThan(0);
+      expect(e.route.startsWith('/')).toBe(true);
+      expect(e.request_count).toBeGreaterThan(0);
+      expect(e.error_rate).toBeGreaterThanOrEqual(0);
+      expect(e.error_rate).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('approximatePercentiles returns 0 for an empty histogram', () => {
+    expect(approximatePercentiles(new Array(16).fill(0))).toEqual({ p50_ms: 0, p95_ms: 0 });
+  });
+
+  it('mergeBuckets groups by method and route', () => {
+    const merged = mergeBuckets(SEED_BUCKETS, '1h');
+    const keys = new Set(merged.map((e) => `${e.method}|${e.route}`));
+    expect(keys.size).toBe(merged.length);
+    expect(keys.has('GET|/users/:id')).toBe(true);
+    expect(keys.has('POST|/orders')).toBe(true);
+  });
+});
+
+describe('schema version', () => {
+  it('exposes the v1 schema version literal', () => {
+    expect(SCHEMA_VERSION).toBe('v1');
+  });
+});
