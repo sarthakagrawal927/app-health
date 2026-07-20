@@ -31,12 +31,12 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-20 — reviewed V0 workspace, shared contracts, local seeded adapter, and TypeScript/Go CI foundation landed
 - 2026-07-20 — merged the local Wave 1 backend: scoped one-time ingest keys, aggregate-only idempotent ingest, fixed histograms, installation status, endpoint-window queries, and fail-closed non-local owner APIs
 - 2026-07-20 — merged bounded Node/Express and Go `net/http` SDKs with asynchronous batching, timeout/retry/drop behavior, privacy-exclusion tests, benchmarks, and credential-free runnable examples; clean-install TypeScript checks, 39 Go tests, Go vet, and strict OpenSpec validation pass
+- 2026-07-20 — completed the local endpoint dashboard, all six desktop/mobile state captures, and Node/Go example proofs through the real local ingest/query path; full workspace checks, 44 Go tests, Go vet, SDK benchmarks, and strict OpenSpec validation pass
 
 ## Products
 
 - Private GitHub repository and local development checkout.
-- Local implemented surfaces: Cloudflare-compatible ingest/API service, Node SDK, and Go SDK.
-- Planned surface: local operator web application.
+- Local implemented surfaces: operator web application, Cloudflare-compatible ingest/API service, Node SDK, and Go SDK.
 
 ## Features (shipped)
 
@@ -44,10 +44,10 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - **Local endpoint backend:** additive D1 schema, repository boundaries, scoped key lifecycle, aggregate-only authenticated ingest, deterministic endpoint metrics, installation status, and 15-minute/1-hour/24-hour queries. Production D1/auth are not configured.
 - **Node SDK:** optional Express middleware and bounded fail-open delivery with privacy, outage, retry, overflow, shutdown, and benchmark coverage.
 - **Go SDK:** `net/http` middleware and bounded fail-open delivery with route-pattern/resolver support, response-behavior coverage, privacy/outage/retry/overflow/close tests, and benchmark coverage.
+- **Operator dashboard:** local app/key setup, one-time key handoff, Node/Go snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
+- **End-to-end local proof:** the Express and Go examples each sent `/health`, `/users/:id`, and `/orders` through the same local ingest and query APIs used by the dashboard; both runtimes reached connected state and the aggregates updated.
 
 ## Todo / Planned / Deferred / Blocked
 
-1. **Planned:** implement the observed-endpoint performance dashboard and its six checked browser screenshots.
-2. **Planned:** run both examples end to end through local ingest and the dashboard, then complete the final visual/dependency/privacy handoff.
-3. **Deferred:** the broader owner-first Problem workflow in `build-app-health-mvp` until the endpoint V0 earns expansion.
-4. **Blocked for any deployment:** production identity/auth choice and explicit deploy approval.
+1. **Deferred:** the broader owner-first Problem workflow in `build-app-health-mvp` until the endpoint V0 earns expansion.
+2. **Blocked for any deployment:** production identity/auth choice and explicit deploy approval.

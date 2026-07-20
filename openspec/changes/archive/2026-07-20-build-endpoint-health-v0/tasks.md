@@ -35,19 +35,19 @@
 
 ## 5. Endpoint dashboard (Wave 2, dashboard Devin agent)
 
-- [ ] 5.1 Implement the Vite/React local operator flow to create an app, display the key once, and show Node and Go install snippets.
-- [ ] 5.2 Implement installation states for waiting, connected, stale, revoked/invalid key, and temporary API failure with a concrete next action.
-- [ ] 5.3 Implement a cohesive, polished visual system and the observed-endpoint table with method/route, request count, error rate, p50, p95, last seen, health state, refresh time, and 15-minute/1-hour/24-hour selection.
-- [ ] 5.4 Implement stable sorting by health, requests, error rate, p95, and last seen, with visible metric/threshold explanations, accessible contrast/focus behavior, and an intentional narrow-screen card/list layout.
-- [ ] 5.5 Add UI tests for project setup, one-time key behavior, no-traffic, populated windows, low-volume state, sorting, stale data, and API failure.
-- [ ] 5.6 Capture and check in six current browser screenshots: desktop and mobile views for setup, waiting-for-traffic, and populated endpoint states, without deploying.
+- [x] 5.1 Implement the Vite/React local operator flow to create an app, display the key once, and show Node and Go install snippets.
+- [x] 5.2 Implement installation states for waiting, connected, stale, revoked/invalid key, and temporary API failure with a concrete next action.
+- [x] 5.3 Implement a cohesive, polished visual system and the observed-endpoint table with method/route, request count, error rate, p50, p95, last seen, health state, refresh time, and 15-minute/1-hour/24-hour selection.
+- [x] 5.4 Implement stable sorting by health, requests, error rate, p95, and last seen, with visible metric/threshold explanations, accessible contrast/focus behavior, and an intentional narrow-screen card/list layout.
+- [x] 5.5 Add UI tests for project setup, one-time key behavior, no-traffic, populated windows, low-volume state, sorting, stale data, and API failure.
+- [x] 5.6 Capture and check in six current browser screenshots: desktop and mobile views for setup, waiting-for-traffic, and populated endpoint states, without deploying.
 
 ## 6. End-to-end proof and handoff (Wave 3, parent review)
 
-- [ ] 6.1 Run one Express example through local ingest and verify its observed endpoints and metrics in the dashboard.
-- [ ] 6.2 Run one Go example through local ingest and verify its observed endpoints and metrics in the same dashboard.
-- [ ] 6.3 Prove both SDKs fail open during ingest outage and remain within their documented benchmark budgets.
-- [ ] 6.4 Run full format/lint, typecheck, TypeScript tests, Go tests, builds, OpenSpec validation, and `git diff --check` from a clean install.
-- [ ] 6.5 Review dependencies, public SDK APIs, privacy exclusions, tenant/environment scope, raw-event absence, and the non-local owner-auth fail-closed path.
-- [ ] 6.6 Review all six screenshots for hierarchy, density, responsive behavior, accessibility, and visual finish; send dashboard fixes back before acceptance.
-- [ ] 6.7 Update `PROJECT_STATUS.md` with only verified shipped behavior, archive the V0 OpenSpec change when complete, and leave production auth/deployment as explicit later work.
+- [x] 6.1 Run one Express example through local ingest and verify its observed endpoints and metrics in the dashboard.
+- [x] 6.2 Run one Go example through local ingest and verify its observed endpoints and metrics in the same dashboard.
+- [x] 6.3 Prove both SDKs fail open during ingest outage and remain within their documented benchmark budgets.
+- [x] 6.4 Run full format/lint, typecheck, TypeScript tests, Go tests, builds, OpenSpec validation, and `git diff --check` from a clean install.
+- [x] 6.5 Review dependencies, public SDK APIs, privacy exclusions, tenant/environment scope, raw-event absence, and the non-local owner-auth fail-closed path.
+- [x] 6.6 Review all six screenshots for hierarchy, density, responsive behavior, accessibility, and visual finish; send dashboard fixes back before acceptance.
+- [x] 6.7 Update `PROJECT_STATUS.md` with only verified shipped behavior, archive the V0 OpenSpec change when complete, and leave production auth/deployment as explicit later work.
