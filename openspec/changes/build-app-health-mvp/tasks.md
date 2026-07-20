@@ -1,3 +1,5 @@
+> **Deferred roadmap:** Do not apply these tasks during V0. The active implementation checklist is `../build-endpoint-health-v0/tasks.md`.
+
 ## 1. Foundation — reviewed baseline (Wave 0, one agent)
 
 - [ ] 1.1 Create the pnpm workspace, root scripts, shared TypeScript and lint configuration, package graph, and checked-in lockfile without adding unused runtime dependencies.

@@ -2,6 +2,8 @@
 
 Non-technical founders and small agencies can see raw application telemetry, but they cannot quickly answer whether users are succeeding, what broke, or what evidence a developer or coding agent needs. App Health will validate an owner-first workflow that turns safe Express request telemetry into ranked user-impacting problems, a bounded fix handoff, and evidence-backed recovery.
 
+> **Roadmap status:** This broad MVP is deferred. `build-endpoint-health-v0` is the active implementation slice: project/key setup, Go and Node request instrumentation, aggregation, and an observed-endpoint performance list only.
+
 ## What Changes
 
 - Create a TypeScript monorepo with an Express SDK, a Cloudflare ingestion/API service, asynchronous problem processing, and a Vite/React owner application.
