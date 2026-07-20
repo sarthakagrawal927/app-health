@@ -1,10 +1,10 @@
 ## 1. Repository and contract foundation (Wave 0, one Devin agent)
 
-- [ ] 1.1 Create a pnpm TypeScript workspace with `apps/web`, `apps/worker`, `packages/contracts`, and `packages/node`, plus `packages/go` as a Go 1.22 module.
-- [ ] 1.2 Add root and package-local format/lint, typecheck, test, and build commands with a checked-in pnpm lockfile and functional CI for both TypeScript and Go.
-- [ ] 1.3 Define the runtime-validated v1 event batch, endpoint aggregate, app/key, installation status, and endpoint query contracts with canonical Node and Go fixtures.
-- [ ] 1.4 Add a credential-free in-memory development adapter and seeded endpoint metrics without implementing production resources.
-- [ ] 1.5 Document architecture, exact local commands, minimal dependency rationale, observed-endpoint semantics, and the no-deploy/no-production-auth boundary.
+- [x] 1.1 Create a pnpm TypeScript workspace with `apps/web`, `apps/worker`, `packages/contracts`, and `packages/node`, plus `packages/go` as a Go 1.22 module.
+- [x] 1.2 Add root and package-local format/lint, typecheck, test, and build commands with a checked-in pnpm lockfile and functional CI for both TypeScript and Go.
+- [x] 1.3 Define the runtime-validated v1 event batch, endpoint aggregate, app/key, installation status, and endpoint query contracts with canonical Node and Go fixtures.
+- [x] 1.4 Add a credential-free in-memory development adapter and seeded endpoint metrics without implementing production resources.
+- [x] 1.5 Document architecture, exact local commands, minimal dependency rationale, observed-endpoint semantics, and the no-deploy/no-production-auth boundary.
 
 ## 2. Project key and endpoint ingestion (Wave 1A, backend Devin agent)
 

@@ -28,6 +28,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-20 — project scaffolded
 - 2026-07-20 — MVP PRD converted into OpenSpec proposal, capability specs, technical design, and implementation waves
 - 2026-07-20 — broad MVP deferred; endpoint-only Go + Node V0 made the active build target
+- 2026-07-20 — reviewed V0 workspace, shared contracts, local seeded adapter, and TypeScript/Go CI foundation landed
 
 ## Products
 
@@ -36,7 +37,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 
 ## Features (shipped)
 
-- (none yet)
+- **Development foundation:** pnpm TypeScript workspace plus Go 1.22 module, versioned runtime-validated endpoint contracts, equivalent Node/Go fixtures, local seeded Worker adapter, and green TypeScript/Go CI.
 
 ## Todo / Planned / Deferred / Blocked
 
