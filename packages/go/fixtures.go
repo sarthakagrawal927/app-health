@@ -58,10 +58,9 @@ func BuildCanonicalBatch(runtime Runtime, release string, seedBase uint32) Event
 			Release:    &r,
 		}
 	}
-	rt := runtime
 	return EventBatchV1{
 		SchemaVersion: SchemaVersion,
-		Runtime:       &rt,
+		Runtime:       runtime,
 		Release:       &release,
 		Events:        events,
 	}

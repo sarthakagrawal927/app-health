@@ -44,29 +44,33 @@ const release = z.string().trim().min(1).max(MAX_RELEASE_LENGTH).optional();
 const timestamp = z.number().int().min(0);
 
 /** A single endpoint performance summary. */
-export const EventV1 = z.object({
-  event_id: uuidV4,
-  timestamp,
-  method,
-  route,
-  status_code: statusCode,
-  duration_ms: durationMs,
-  release,
-});
+export const EventV1 = z
+  .object({
+    event_id: uuidV4,
+    timestamp,
+    method,
+    route,
+    status_code: statusCode,
+    duration_ms: durationMs,
+    release,
+  })
+  .strict();
 
 export type EventV1 = z.infer<typeof EventV1>;
 
 /** SDK runtime reported for installation verification. */
-export const RuntimeField = z.enum(RUNTIMES).optional();
+export const RuntimeField = z.enum(RUNTIMES);
 export type RuntimeField = z.infer<typeof RuntimeField>;
 
 /** V1 ingest batch. */
-export const EventBatchV1 = z.object({
-  schema_version: z.literal(SCHEMA_VERSION),
-  runtime: RuntimeField,
-  release: release,
-  events: z.array(EventV1).min(1).max(MAX_BATCH_EVENTS),
-});
+export const EventBatchV1 = z
+  .object({
+    schema_version: z.literal(SCHEMA_VERSION),
+    runtime: RuntimeField,
+    release: release,
+    events: z.array(EventV1).min(1).max(MAX_BATCH_EVENTS),
+  })
+  .strict();
 
 export type EventBatchV1 = z.infer<typeof EventBatchV1>;
 

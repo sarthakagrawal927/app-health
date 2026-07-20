@@ -45,6 +45,7 @@ describe('App', () => {
   it('renders the observed-endpoint heading', async () => {
     render(<App />);
     expect(screen.getByText(/App Health/i)).toBeTruthy();
+    await screen.findByText('/health');
   });
 
   it('renders the seeded endpoint row after fetch', async () => {

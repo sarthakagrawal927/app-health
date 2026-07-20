@@ -4,9 +4,9 @@ Also read and follow the shared fleet-level agent standard at `../AGENTS.md`. Tr
 
 ## Project
 
-- **Stack**: TypeScript monorepo: Vite + React, Cloudflare Workers, D1, R2, Queues, Express SDK
-- **Local dev**: TBD
-- **Deploy**: TBD
+- **Stack**: pnpm TypeScript workspace (Vite + React, Cloudflare-compatible Worker, Node/Express SDK) plus a Go 1.22 `net/http` SDK
+- **Local dev**: `pnpm install && pnpm run check`; see the commands below for web and Go
+- **Deploy**: Not configured in V0; production auth and deployment require a later approved change
 
 ## Local commands
 
@@ -43,6 +43,6 @@ Go job that runs `go test ./...` and `go vet ./...` from `packages/go`.
 
 ## Wave status
 
-- Wave 0 (tasks 1.1-1.5): shipped on `devin/v0-foundation`.
-- Wave 1 (ingest, Node SDK, Go SDK) and Wave 2 (dashboard): out of scope for
-  the current change; see `openspec/changes/build-endpoint-health-v0/tasks.md`.
+- Foundation tasks 1.1-1.5 are implemented. Wave 1 (ingest, Node SDK, Go SDK)
+  and Wave 2 (dashboard) remain active in
+  `openspec/changes/build-endpoint-health-v0/tasks.md`.

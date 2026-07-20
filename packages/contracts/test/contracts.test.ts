@@ -9,6 +9,7 @@ import {
   EventBatchV1,
   EventV1,
   SEED_BUCKETS,
+  buildSeedBuckets,
   seededAggregateResponse,
   mergeBuckets,
   approximatePercentiles,
@@ -32,6 +33,22 @@ describe('event batch validation', () => {
     const batch = nodeBatchFixture();
     const result = validateBatch({ ...batch, schema_version: 'v2' });
     expect(result.ok).toBe(false);
+  });
+
+  it('requires the SDK runtime', () => {
+    const { runtime: _runtime, ...batch } = nodeBatchFixture();
+    expect(validateBatch(batch).ok).toBe(false);
+  });
+
+  it('rejects unknown batch and event fields instead of stripping them', () => {
+    const batch = nodeBatchFixture();
+    expect(validateBatch({ ...batch, authorization: 'Bearer secret' }).ok).toBe(false);
+    expect(
+      validateBatch({
+        ...batch,
+        events: [{ ...batch.events[0], request_body: { secret: true } }, ...batch.events.slice(1)],
+      }).ok,
+    ).toBe(false);
   });
 
   it('rejects an empty batch', () => {
@@ -179,6 +196,22 @@ describe('seeded endpoint metrics', () => {
     expect(keys.size).toBe(merged.length);
     expect(keys.has('GET|/users/:id')).toBe(true);
     expect(keys.has('POST|/orders')).toBe(true);
+  });
+
+  it('filters one-minute buckets to the selected window', () => {
+    const fifteenMinutes = mergeBuckets(SEED_BUCKETS, '15m');
+    const oneHour = mergeBuckets(SEED_BUCKETS, '1h');
+    const shortOrders = fifteenMinutes.find((endpoint) => endpoint.route === '/orders');
+    const longOrders = oneHour.find((endpoint) => endpoint.route === '/orders');
+    expect(shortOrders?.request_count).toBe(5);
+    expect(longOrders?.request_count).toBe(10);
+  });
+
+  it('places samples exactly on a latency bound in that bound', () => {
+    const healthBucket = buildSeedBuckets(1_725_000_000_000).find(
+      (bucket) => bucket.route === '/health',
+    );
+    expect(healthBucket?.histogram[2]).toBe(3);
   });
 });
 

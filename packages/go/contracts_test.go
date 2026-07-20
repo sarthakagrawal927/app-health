@@ -21,6 +21,23 @@ func TestValidateBatch_RejectsUnknownSchemaVersion(t *testing.T) {
 	}
 }
 
+func TestValidateBatch_RequiresRuntime(t *testing.T) {
+	b := GoBatchFixture()
+	b.Runtime = ""
+	if _, err := ValidateBatch(b); err == nil {
+		t.Fatal("expected error for missing runtime")
+	}
+}
+
+func TestValidateBatch_RejectsInvalidBatchRelease(t *testing.T) {
+	b := GoBatchFixture()
+	release := ""
+	b.Release = &release
+	if _, err := ValidateBatch(b); err == nil {
+		t.Fatal("expected error for empty batch release")
+	}
+}
+
 func TestValidateBatch_RejectsEmptyEvents(t *testing.T) {
 	b := GoBatchFixture()
 	b.Events = nil
@@ -96,11 +113,11 @@ func TestAreEndpointEquivalent_NodeAndGo(t *testing.T) {
 
 func TestComputeHealthState(t *testing.T) {
 	cases := []struct {
-		name       string
-		reqs       int
-		errRate    float64
-		p95        int
-		want       HealthState
+		name    string
+		reqs    int
+		errRate float64
+		p95     int
+		want    HealthState
 	}{
 		{"low volume", 10, 0.5, 5000, HealthInsufficientData},
 		{"healthy", 100, 0, 100, HealthHealthy},

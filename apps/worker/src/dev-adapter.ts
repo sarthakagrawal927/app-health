@@ -17,10 +17,10 @@ import {
 import {
   SEED_APP_ID,
   SEED_APP_NAME,
-  SEED_BUCKETS,
   SEED_ENV_ID,
   SEED_ENV_NAME,
   SEED_KEY,
+  buildSeedBuckets,
   mergeBuckets,
 } from '@app-health/contracts';
 
@@ -49,14 +49,6 @@ const SEED_ENV: EnvironmentV1 = {
   created_at: SEED_APP.created_at,
 };
 
-const SEED_INSTALLATION: InstallationStatus = InstallationStatusV1.parse({
-  state: 'connected',
-  runtime: 'node',
-  first_seen: SEED_APP.created_at,
-  last_seen: SEED_APP.created_at + 60_000,
-  next_action: 'Send traffic to your instrumented endpoints to populate the dashboard.',
-});
-
 /**
  * In-memory dev adapter. No credentials, no D1, no production resources.
  * App creation always returns the seeded app/key so the dashboard has a
@@ -82,7 +74,14 @@ export class InMemoryDevAdapter implements AppHealthAdapter {
         next_action: 'Install the SDK with this environment\u2019s ingest key.',
       });
     }
-    return SEED_INSTALLATION;
+    const now = Date.now();
+    return InstallationStatusV1.parse({
+      state: 'connected',
+      runtime: 'node',
+      first_seen: now - 10 * 60_000,
+      last_seen: now - 60_000,
+      next_action: 'Send traffic to your instrumented endpoints to populate the dashboard.',
+    });
   }
 
   async queryEndpoints(
@@ -93,10 +92,11 @@ export class InMemoryDevAdapter implements AppHealthAdapter {
     if (appId !== SEED_APP_ID || envId !== SEED_ENV_ID) {
       return { refreshed_at: Date.now(), window, endpoints: [] };
     }
+    const refreshedAt = Date.now();
     return {
-      refreshed_at: Date.now(),
+      refreshed_at: refreshedAt,
       window,
-      endpoints: mergeBuckets(SEED_BUCKETS, window),
+      endpoints: mergeBuckets(buildSeedBuckets(refreshedAt), window, refreshedAt),
     };
   }
 }

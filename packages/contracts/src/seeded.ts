@@ -6,7 +6,7 @@
 
 import type { BucketV1, EndpointAggregateV1 } from './aggregate.js';
 import { LATENCY_HISTOGRAM_BUCKETS } from './aggregate.js';
-import { BUCKET_MS } from './constants.js';
+import { BUCKET_MS, LATENCY_BUCKET_BOUNDS_MS, WINDOW_MS } from './constants.js';
 import { healthState } from './health.js';
 
 /** Seeded app/environment/key identifiers used by the dev adapter. */
@@ -19,8 +19,8 @@ export const SEED_KEY = 'ahk_seed_do_not_use_in_production';
 
 const NOW = 1_725_000_000_000;
 
-function bucketStartMinutesAgo(minutes: number): number {
-  return NOW - minutes * BUCKET_MS;
+function bucketStartMinutesAgo(now: number, minutes: number): number {
+  return now - minutes * BUCKET_MS;
 }
 
 function emptyHistogram(): number[] {
@@ -30,11 +30,10 @@ function emptyHistogram(): number[] {
 function histogram(samplesMs: number[]): number[] {
   // Bucket index = number of bounds strictly less than the sample, capped at
   // the last (overflow) bucket. Bounds are aligned with LATENCY_BUCKET_BOUNDS_MS.
-  const bounds = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000];
   const counts = emptyHistogram();
   for (const ms of samplesMs) {
     let idx = 0;
-    while (idx < bounds.length && ms >= bounds[idx]) idx += 1;
+    while (idx < LATENCY_BUCKET_BOUNDS_MS.length && ms > LATENCY_BUCKET_BOUNDS_MS[idx]) idx += 1;
     counts[idx] += 1;
   }
   return counts;
@@ -42,6 +41,7 @@ function histogram(samplesMs: number[]): number[] {
 
 /** Build a single seeded bucket. */
 function makeBucket(
+  now: number,
   minutesAgo: number,
   method: string,
   route: string,
@@ -50,11 +50,11 @@ function makeBucket(
   const request_count = samples.length;
   const error_count = samples.filter((s) => s.status >= 500).length;
   const duration_sum_ms = samples.reduce((sum, s) => sum + s.duration_ms, 0);
-  const last_seen = bucketStartMinutesAgo(minutesAgo) + BUCKET_MS - 1;
+  const last_seen = bucketStartMinutesAgo(now, minutesAgo) + BUCKET_MS - 1;
   return {
     app_id: SEED_APP_ID,
     environment_id: SEED_ENV_ID,
-    bucket_start: bucketStartMinutesAgo(minutesAgo),
+    bucket_start: bucketStartMinutesAgo(now, minutesAgo),
     method,
     route,
     request_count,
@@ -66,61 +66,67 @@ function makeBucket(
 }
 
 /** Seeded one-minute buckets spanning the last ~25 minutes. */
-export const SEED_BUCKETS: readonly BucketV1[] = [
-  makeBucket(1, 'GET', '/health', [
-    { status: 200, duration_ms: 8 },
-    { status: 200, duration_ms: 12 },
-    { status: 200, duration_ms: 10 },
-    { status: 200, duration_ms: 9 },
-    { status: 200, duration_ms: 11 },
-  ]),
-  makeBucket(2, 'GET', '/users/:id', [
-    { status: 200, duration_ms: 45 },
-    { status: 200, duration_ms: 52 },
-    { status: 404, duration_ms: 38 },
-    { status: 200, duration_ms: 48 },
-    { status: 200, duration_ms: 60 },
-  ]),
-  makeBucket(3, 'POST', '/orders', [
-    { status: 201, duration_ms: 120 },
-    { status: 201, duration_ms: 135 },
-    { status: 500, duration_ms: 350 },
-    { status: 201, duration_ms: 128 },
-    { status: 201, duration_ms: 142 },
-  ]),
-  makeBucket(5, 'GET', '/orders/:id', [
-    { status: 200, duration_ms: 88 },
-    { status: 200, duration_ms: 95 },
-    { status: 200, duration_ms: 102 },
-    { status: 200, duration_ms: 80 },
-    { status: 200, duration_ms: 110 },
-  ]),
-  makeBucket(10, 'GET', '/users/:id', [
-    { status: 200, duration_ms: 50 },
-    { status: 200, duration_ms: 55 },
-    { status: 200, duration_ms: 48 },
-    { status: 200, duration_ms: 52 },
-    { status: 200, duration_ms: 58 },
-  ]),
-  makeBucket(20, 'POST', '/orders', [
-    { status: 201, duration_ms: 130 },
-    { status: 201, duration_ms: 125 },
-    { status: 201, duration_ms: 140 },
-    { status: 500, duration_ms: 400 },
-    { status: 201, duration_ms: 120 },
-  ]),
-] as const;
+export function buildSeedBuckets(now = Date.now()): readonly BucketV1[] {
+  return [
+    makeBucket(now, 1, 'GET', '/health', [
+      { status: 200, duration_ms: 8 },
+      { status: 200, duration_ms: 12 },
+      { status: 200, duration_ms: 10 },
+      { status: 200, duration_ms: 9 },
+      { status: 200, duration_ms: 11 },
+    ]),
+    makeBucket(now, 2, 'GET', '/users/:id', [
+      { status: 200, duration_ms: 45 },
+      { status: 200, duration_ms: 52 },
+      { status: 404, duration_ms: 38 },
+      { status: 200, duration_ms: 48 },
+      { status: 200, duration_ms: 60 },
+    ]),
+    makeBucket(now, 3, 'POST', '/orders', [
+      { status: 201, duration_ms: 120 },
+      { status: 201, duration_ms: 135 },
+      { status: 500, duration_ms: 350 },
+      { status: 201, duration_ms: 128 },
+      { status: 201, duration_ms: 142 },
+    ]),
+    makeBucket(now, 5, 'GET', '/orders/:id', [
+      { status: 200, duration_ms: 88 },
+      { status: 200, duration_ms: 95 },
+      { status: 200, duration_ms: 102 },
+      { status: 200, duration_ms: 80 },
+      { status: 200, duration_ms: 110 },
+    ]),
+    makeBucket(now, 10, 'GET', '/users/:id', [
+      { status: 200, duration_ms: 50 },
+      { status: 200, duration_ms: 55 },
+      { status: 200, duration_ms: 48 },
+      { status: 200, duration_ms: 52 },
+      { status: 200, duration_ms: 58 },
+    ]),
+    makeBucket(now, 20, 'POST', '/orders', [
+      { status: 201, duration_ms: 130 },
+      { status: 201, duration_ms: 125 },
+      { status: 201, duration_ms: 140 },
+      { status: 500, duration_ms: 400 },
+      { status: 201, duration_ms: 120 },
+    ]),
+  ] as const;
+}
+
+/** Deterministic buckets for contract tests. Runtime adapters build fresh copies. */
+export const SEED_BUCKETS: readonly BucketV1[] = buildSeedBuckets(NOW);
 
 /** Approximate p50/p95 from a merged histogram, aligned with bounds. */
 export function approximatePercentiles(histogram: readonly number[]): {
   p50_ms: number;
   p95_ms: number;
 } {
-  const bounds = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000];
   const total = histogram.reduce((sum, c) => sum + c, 0);
   if (total === 0) return { p50_ms: 0, p95_ms: 0 };
   const bucketUpperBound = (idx: number): number =>
-    idx < bounds.length ? bounds[idx] : bounds[bounds.length - 1] * 2;
+    idx < LATENCY_BUCKET_BOUNDS_MS.length
+      ? LATENCY_BUCKET_BOUNDS_MS[idx]
+      : LATENCY_BUCKET_BOUNDS_MS[LATENCY_BUCKET_BOUNDS_MS.length - 1] * 2;
   const valueAtPercentile = (p: number): number => {
     const target = Math.ceil(total * p);
     let running = 0;
@@ -139,8 +145,10 @@ export function mergeBuckets(
   windowLabel: '15m' | '1h' | '24h',
   refreshedAt = NOW,
 ): EndpointAggregateV1[] {
+  const cutoff = refreshedAt - WINDOW_MS[windowLabel];
   const byKey = new Map<string, BucketV1[]>();
   for (const b of buckets) {
+    if (b.bucket_start < cutoff || b.bucket_start > refreshedAt) continue;
     const key = `${b.method}|${b.route}`;
     const list = byKey.get(key) ?? [];
     list.push(b);
@@ -189,10 +197,6 @@ export function mergeBuckets(
     if (a.request_count !== b.request_count) return b.request_count - a.request_count;
     return a.route.localeCompare(b.route);
   });
-  // windowLabel is intentionally unused in V0 seed merging; the seed spans
-  // ~25 minutes so 15m/1h/24h all return the same set in the dev adapter.
-  void windowLabel;
-  void refreshedAt;
   return aggregates;
 }
 

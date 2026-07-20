@@ -50,13 +50,15 @@ export const WindowField = z.enum(WINDOWS);
 export type WindowField = z.infer<typeof WindowField>;
 
 /** Query request accepted by the endpoint query API. */
-export const EndpointQueryRequestV1 = z.object({
-  app_id: z.string().min(1),
-  environment_id: z.string().min(1),
-  window: WindowField,
-  sort: z.enum(['health', 'requests', 'error_rate', 'p95', 'last_seen']).default('health'),
-  sort_dir: z.enum(['asc', 'desc']).default('desc'),
-});
+export const EndpointQueryRequestV1 = z
+  .object({
+    app_id: z.string().min(1),
+    environment_id: z.string().min(1),
+    window: WindowField,
+    sort: z.enum(['health', 'requests', 'error_rate', 'p95', 'last_seen']).default('health'),
+    sort_dir: z.enum(['asc', 'desc']).default('desc'),
+  })
+  .strict();
 
 export type EndpointQueryRequestV1 = z.infer<typeof EndpointQueryRequestV1>;
 

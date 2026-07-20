@@ -44,10 +44,12 @@ export const KeyDisplayV1 = z.object({
 export type KeyDisplayV1 = z.infer<typeof KeyDisplayV1>;
 
 /** Request body accepted by the local app-creation endpoint. */
-export const CreateAppRequestV1 = z.object({
-  name: z.string().trim().min(1).max(128),
-  environment: z.string().trim().min(1).max(64),
-});
+export const CreateAppRequestV1 = z
+  .object({
+    name: z.string().trim().min(1).max(128),
+    environment: z.string().trim().min(1).max(64),
+  })
+  .strict();
 
 export type CreateAppRequestV1 = z.infer<typeof CreateAppRequestV1>;
 

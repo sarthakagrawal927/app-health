@@ -61,10 +61,10 @@ const (
 type HealthState string
 
 const (
-	HealthHealthy           HealthState = "healthy"
-	HealthDegraded          HealthState = "degraded"
-	HealthUnhealthy         HealthState = "unhealthy"
-	HealthInsufficientData  HealthState = "insufficient-data"
+	HealthHealthy          HealthState = "healthy"
+	HealthDegraded         HealthState = "degraded"
+	HealthUnhealthy        HealthState = "unhealthy"
+	HealthInsufficientData HealthState = "insufficient-data"
 )
 
 // InstallationState is the installation-status state value.
@@ -91,9 +91,9 @@ type EventV1 struct {
 
 // EventBatchV1 is the V1 ingest batch.
 type EventBatchV1 struct {
-	SchemaVersion string   `json:"schema_version"`
-	Runtime       *Runtime `json:"runtime,omitempty"`
-	Release       *string  `json:"release,omitempty"`
+	SchemaVersion string    `json:"schema_version"`
+	Runtime       Runtime   `json:"runtime"`
+	Release       *string   `json:"release,omitempty"`
 	Events        []EventV1 `json:"events"`
 }
 
@@ -125,19 +125,19 @@ type EnvironmentV1 struct {
 }
 
 type KeyRecordV1 struct {
-	ID           string `json:"id"`
-	AppID        string `json:"app_id"`
+	ID            string `json:"id"`
+	AppID         string `json:"app_id"`
 	EnvironmentID string `json:"environment_id"`
-	VerifierHash string `json:"verifier_hash"`
-	CreatedAt    int64  `json:"created_at"`
-	RevokedAt    *int64 `json:"revoked_at"`
+	VerifierHash  string `json:"verifier_hash"`
+	CreatedAt     int64  `json:"created_at"`
+	RevokedAt     *int64 `json:"revoked_at"`
 }
 
 type KeyDisplayV1 struct {
-	Key          string `json:"key"`
-	AppID        string `json:"app_id"`
+	Key           string `json:"key"`
+	AppID         string `json:"app_id"`
 	EnvironmentID string `json:"environment_id"`
-	CreatedAt    int64  `json:"created_at"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 type CreateAppRequestV1 struct {
@@ -146,9 +146,9 @@ type CreateAppRequestV1 struct {
 }
 
 type CreateAppResponseV1 struct {
-	App         AppV1          `json:"app"`
-	Environment EnvironmentV1  `json:"environment"`
-	Key         KeyDisplayV1   `json:"key"`
+	App         AppV1         `json:"app"`
+	Environment EnvironmentV1 `json:"environment"`
+	Key         KeyDisplayV1  `json:"key"`
 }
 
 // InstallationStatusV1 mirrors the TypeScript installation-status contract.
@@ -162,18 +162,18 @@ type InstallationStatusV1 struct {
 
 // EndpointQueryRequestV1 mirrors the TypeScript query request.
 type EndpointQueryRequestV1 struct {
-	AppID        string `json:"app_id"`
+	AppID         string `json:"app_id"`
 	EnvironmentID string `json:"environment_id"`
-	Window       Window `json:"window"`
-	Sort         string `json:"sort"`
-	SortDir      string `json:"sort_dir"`
+	Window        Window `json:"window"`
+	Sort          string `json:"sort"`
+	SortDir       string `json:"sort_dir"`
 }
 
 // EndpointQueryResponseV1 mirrors the TypeScript query response.
 type EndpointQueryResponseV1 struct {
-	RefreshedAt int64                  `json:"refreshed_at"`
-	Window      Window                 `json:"window"`
-	Endpoints   []EndpointAggregateV1  `json:"endpoints"`
+	RefreshedAt int64                 `json:"refreshed_at"`
+	Window      Window                `json:"window"`
+	Endpoints   []EndpointAggregateV1 `json:"endpoints"`
 }
 
 var (
@@ -216,8 +216,14 @@ func ValidateBatch(b EventBatchV1) (EventBatchV1, error) {
 	if b.SchemaVersion != SchemaVersion {
 		return b, fmt.Errorf("schema_version: expected %q, got %q", SchemaVersion, b.SchemaVersion)
 	}
-	if b.Runtime != nil && *b.Runtime != RuntimeNode && *b.Runtime != RuntimeGo {
+	if b.Runtime != RuntimeNode && b.Runtime != RuntimeGo {
 		return b, fmt.Errorf("runtime: must be %q or %q", RuntimeNode, RuntimeGo)
+	}
+	if b.Release != nil {
+		r := strings.TrimSpace(*b.Release)
+		if len(r) == 0 || len(r) > MaxReleaseLength {
+			return b, fmt.Errorf("release: must be 1..%d chars", MaxReleaseLength)
+		}
 	}
 	n := len(b.Events)
 	if n == 0 {
