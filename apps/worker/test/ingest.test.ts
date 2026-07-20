@@ -1,0 +1,507 @@
+import { describe, expect, it } from 'vitest';
+import { AppHealthService, InMemoryAdapter } from '../src/index.js';
+import { hashKey, generateRawKey, KEY_PREFIX } from '../src/crypto.js';
+import {
+  BUCKET_MS,
+  INSUFFICIENT_DATA_MIN_REQUESTS,
+  LATENCY_BUCKET_BOUNDS_MS,
+  LATENCY_HISTOGRAM_BUCKETS,
+  MAX_CLOCK_SKEW_MS,
+  SEED_APP_ID,
+  SEED_ENV_ID,
+  SEED_KEY,
+  buildCanonicalBatch,
+  healthState,
+  type EventBatchV1,
+  type EventV1,
+} from '@app-health/contracts';
+
+const NOW = 1_725_000_000_000;
+
+function uuid(seed: number): string {
+  const hex = (n: number, len: number): string =>
+    Math.abs(Math.floor(n * 2654435761))
+      .toString(16)
+      .padStart(len, '0')
+      .slice(-len);
+  return (
+    `${hex(seed, 8)}-${hex(seed + 1, 4).slice(0, 4)}-4${hex(seed + 2, 3)}` +
+    `-a${hex(seed + 3, 3)}-${hex(seed + 4, 8)
+      .padStart(12, '0')
+      .slice(-12)}`
+  );
+}
+
+function makeEvent(overrides: Partial<EventV1> & { event_id: string }): EventV1 {
+  return {
+    timestamp: NOW,
+    method: 'GET',
+    route: '/test',
+    status_code: 200,
+    duration_ms: 10,
+    ...overrides,
+  };
+}
+
+function makeBatch(events: EventV1[], runtime: 'node' | 'go' = 'node'): EventBatchV1 {
+  return {
+    schema_version: 'v1',
+    runtime,
+    release: '0.0.0-test',
+    events,
+  };
+}
+
+async function freshService(): Promise<{ service: AppHealthService; adapter: InMemoryAdapter }> {
+  const adapter = await InMemoryAdapter.create();
+  const service = new AppHealthService(adapter.asRepositories());
+  return { service, adapter };
+}
+
+describe('ingest key authentication', () => {
+  it('rejects an empty key with 401', async () => {
+    const { service } = await freshService();
+    const result = await service.ingest('', buildCanonicalBatch('node'), NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(401);
+  });
+
+  it('rejects a random non-app-health key with 401', async () => {
+    const { service } = await freshService();
+    const result = await service.ingest('not-a-real-key', buildCanonicalBatch('node'), NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(401);
+  });
+
+  it('rejects a well-formed but unknown key with 401', async () => {
+    const { service } = await freshService();
+    const result = await service.ingest(generateRawKey(), buildCanonicalBatch('node'), NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(401);
+  });
+
+  it('accepts the seeded key', async () => {
+    const { service } = await freshService();
+    const batch = makeBatch([makeEvent({ event_id: uuid(1), timestamp: NOW, route: '/health' })]);
+    const result = await service.ingest(SEED_KEY, batch, NOW);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.accepted).toBe(1);
+  });
+
+  it('rejects a revoked key with 401', async () => {
+    const { service, adapter } = await freshService();
+    // Create a new app/key, then revoke it.
+    const created = await service.createApp({ name: 'revoke-test', environment: 'prod' }, NOW);
+    const rawKey = created.key.key;
+    const ingestBatch = makeBatch([makeEvent({ event_id: uuid(2), timestamp: NOW, route: '/r' })]);
+    const before = await service.ingest(rawKey, ingestBatch, NOW);
+    expect(before.ok).toBe(true);
+    // Revoke the active key for this environment.
+    const keyRecord = await adapter
+      .asRepositories()
+      .keys.getActiveKeyForEnvironment(created.app.id, created.environment.id);
+    expect(keyRecord).not.toBeNull();
+    await service.revokeKey(keyRecord!.id, NOW);
+    const after = await service.ingest(rawKey, ingestBatch, NOW);
+    expect(after.ok).toBe(false);
+    if (!after.ok) expect(after.status).toBe(401);
+  });
+});
+
+describe('ingest unsafe and unknown fields', () => {
+  it('rejects an unknown batch-level field instead of stripping it', async () => {
+    const { service } = await freshService();
+    const batch = buildCanonicalBatch('node');
+    const result = await service.ingest(
+      SEED_KEY,
+      { ...batch, authorization: 'Bearer secret' },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(400);
+  });
+
+  it('rejects an unknown event-level field that could carry request content', async () => {
+    const { service } = await freshService();
+    const batch = buildCanonicalBatch('node');
+    const poisoned = {
+      ...batch,
+      events: [{ ...batch.events[0], request_body: { secret: true } }, ...batch.events.slice(1)],
+    };
+    const result = await service.ingest(SEED_KEY, poisoned, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(400);
+  });
+
+  it('rejects an event with a header-like field', async () => {
+    const { service } = await freshService();
+    const batch = buildCanonicalBatch('node');
+    const poisoned = {
+      ...batch,
+      events: [
+        { ...batch.events[0], headers: { cookie: 'session=abc' } },
+        ...batch.events.slice(1),
+      ],
+    };
+    const result = await service.ingest(SEED_KEY, poisoned, NOW);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a batch with the wrong schema version', async () => {
+    const { service } = await freshService();
+    const batch = { ...buildCanonicalBatch('node'), schema_version: 'v2' };
+    const result = await service.ingest(SEED_KEY, batch, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(400);
+  });
+
+  it('rejects a batch with an out-of-range status code', async () => {
+    const { service } = await freshService();
+    const batch = makeBatch([makeEvent({ event_id: uuid(3), status_code: 99 })]);
+    const result = await service.ingest(SEED_KEY, batch, NOW);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('ingest clock skew', () => {
+  it('rejects an event timestamp too far in the future', async () => {
+    const { service } = await freshService();
+    const batch = makeBatch([
+      makeEvent({ event_id: uuid(4), timestamp: NOW + MAX_CLOCK_SKEW_MS + 1 }),
+    ]);
+    const result = await service.ingest(SEED_KEY, batch, NOW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(400);
+  });
+
+  it('rejects an event timestamp too far in the past', async () => {
+    const { service } = await freshService();
+    const batch = makeBatch([
+      makeEvent({ event_id: uuid(5), timestamp: NOW - MAX_CLOCK_SKEW_MS - 1 }),
+    ]);
+    const result = await service.ingest(SEED_KEY, batch, NOW);
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts an event timestamp within the skew window', async () => {
+    const { service } = await freshService();
+    const batch = makeBatch([makeEvent({ event_id: uuid(6), timestamp: NOW + MAX_CLOCK_SKEW_MS })]);
+    const result = await service.ingest(SEED_KEY, batch, NOW);
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('ingest idempotent event handling', () => {
+  it('counts a retried event ID only once', async () => {
+    const { service } = await freshService();
+    const event = makeEvent({ event_id: uuid(10), timestamp: NOW, route: '/dup' });
+    const batch = makeBatch([event]);
+    const first = await service.ingest(SEED_KEY, batch, NOW);
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      expect(first.accepted).toBe(1);
+      expect(first.duplicates).toBe(0);
+    }
+    const second = await service.ingest(SEED_KEY, batch, NOW);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.accepted).toBe(0);
+      expect(second.duplicates).toBe(1);
+    }
+    // Query the endpoint and confirm the count is 1, not 2.
+    const response = await service.queryEndpoints(SEED_APP_ID, SEED_ENV_ID, '15m', NOW);
+    const endpoint = response.endpoints.find((e) => e.route === '/dup');
+    expect(endpoint).toBeDefined();
+    expect(endpoint!.request_count).toBe(1);
+  });
+
+  it('processes a mix of new and duplicate events in one batch', async () => {
+    const { service } = await freshService();
+    const eventA = makeEvent({ event_id: uuid(20), timestamp: NOW, route: '/mix' });
+    await service.ingest(SEED_KEY, makeBatch([eventA]), NOW);
+    const eventB = makeEvent({ event_id: uuid(21), timestamp: NOW, route: '/mix' });
+    const result = await service.ingest(SEED_KEY, makeBatch([eventA, eventB]), NOW);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.accepted).toBe(1);
+      expect(result.duplicates).toBe(1);
+    }
+  });
+});
+
+describe('ingest aggregate-only storage', () => {
+  it('does not persist raw event content; only bucket counts change', async () => {
+    const { service, adapter } = await freshService();
+    const event = makeEvent({
+      event_id: uuid(30),
+      timestamp: NOW,
+      route: '/no-raw',
+      method: 'POST',
+      status_code: 201,
+      duration_ms: 42,
+    });
+    await service.ingest(SEED_KEY, makeBatch([event]), NOW);
+    const buckets = await adapter
+      .asRepositories()
+      .buckets.queryBuckets(SEED_APP_ID, SEED_ENV_ID, NOW - 60_000, NOW + 60_000);
+    const bucket = buckets.find((b) => b.route === '/no-raw');
+    expect(bucket).toBeDefined();
+    expect(bucket!.request_count).toBe(1);
+    expect(bucket!.error_count).toBe(0);
+    expect(bucket!.duration_sum_ms).toBe(42);
+    // No raw event fields are stored on the bucket.
+    expect((bucket as unknown as Record<string, unknown>).event_id).toBeUndefined();
+    expect((bucket as unknown as Record<string, unknown>).status_code).toBeUndefined();
+  });
+});
+
+describe('fixed latency histograms and window merging', () => {
+  it('places a duration exactly on a bound into that bound bucket', async () => {
+    const { service, adapter } = await freshService();
+    // 10ms is exactly LATENCY_BUCKET_BOUNDS_MS[2] (index 2).
+    const event = makeEvent({
+      event_id: uuid(40),
+      timestamp: NOW,
+      route: '/bound',
+      duration_ms: LATENCY_BUCKET_BOUNDS_MS[2],
+    });
+    await service.ingest(SEED_KEY, makeBatch([event]), NOW);
+    const buckets = await adapter
+      .asRepositories()
+      .buckets.queryBuckets(SEED_APP_ID, SEED_ENV_ID, NOW - 60_000, NOW + 60_000);
+    const bucket = buckets.find((b) => b.route === '/bound');
+    expect(bucket).toBeDefined();
+    expect(bucket!.histogram[2]).toBe(1);
+    // All other buckets are zero.
+    const sum = bucket!.histogram.reduce((a, b) => a + b, 0);
+    expect(sum).toBe(1);
+  });
+
+  it('merges histograms across one-minute buckets for the selected window', async () => {
+    const { service } = await freshService();
+    // Send 3 events at 10ms in 3 different one-minute buckets.
+    const t0 = NOW - 2 * BUCKET_MS;
+    const events: EventV1[] = [
+      makeEvent({ event_id: uuid(50), timestamp: t0, route: '/merge', duration_ms: 10 }),
+      makeEvent({
+        event_id: uuid(51),
+        timestamp: t0 + BUCKET_MS,
+        route: '/merge',
+        duration_ms: 10,
+      }),
+      makeEvent({ event_id: uuid(52), timestamp: NOW, route: '/merge', duration_ms: 10 }),
+    ];
+    await service.ingest(SEED_KEY, makeBatch(events), NOW);
+    const response = await service.queryEndpoints(SEED_APP_ID, SEED_ENV_ID, '15m', NOW);
+    const endpoint = response.endpoints.find((e) => e.route === '/merge');
+    expect(endpoint).toBeDefined();
+    expect(endpoint!.request_count).toBe(3);
+    // p50/p95 derived from merged histogram, not averaged per bucket.
+    // 3 samples at 10ms -> p50 and p95 both at bound index 2 (10ms).
+    expect(endpoint!.p50_ms).toBe(LATENCY_BUCKET_BOUNDS_MS[2]);
+    expect(endpoint!.p95_ms).toBe(LATENCY_BUCKET_BOUNDS_MS[2]);
+  });
+
+  it('derives p95 from merged histogram counts rather than averaging bucket percentiles', async () => {
+    const { service } = await freshService();
+    // Bucket 1: 10 samples at 10ms. Bucket 2: 10 samples at 2000ms.
+    // Merged p95 should be 2000ms (the 19th of 20 samples), not an average.
+    const t0 = NOW - BUCKET_MS;
+    const fastEvents: EventV1[] = Array.from({ length: 10 }, (_, i) =>
+      makeEvent({
+        event_id: uuid(100 + i),
+        timestamp: t0,
+        route: '/p95',
+        duration_ms: 10,
+      }),
+    );
+    const slowEvents: EventV1[] = Array.from({ length: 10 }, (_, i) =>
+      makeEvent({
+        event_id: uuid(200 + i),
+        timestamp: NOW,
+        route: '/p95',
+        duration_ms: 2000,
+      }),
+    );
+    await service.ingest(SEED_KEY, makeBatch([...fastEvents, ...slowEvents]), NOW);
+    const response = await service.queryEndpoints(SEED_APP_ID, SEED_ENV_ID, '15m', NOW);
+    const endpoint = response.endpoints.find((e) => e.route === '/p95');
+    expect(endpoint).toBeDefined();
+    expect(endpoint!.request_count).toBe(20);
+    // 2000ms is bound index 9. p95 of 20 samples = ceil(20*0.95)=19th sample,
+    // which falls in the 2000ms bucket.
+    expect(endpoint!.p95_ms).toBe(LATENCY_BUCKET_BOUNDS_MS[9]);
+  });
+});
+
+describe('health state threshold edges', () => {
+  it('labels 19 requests as insufficient-data', async () => {
+    expect(
+      healthState({ request_count: INSUFFICIENT_DATA_MIN_REQUESTS - 1, error_rate: 0, p95_ms: 10 }),
+    ).toBe('insufficient-data');
+  });
+
+  it('labels 20 requests healthy below degraded thresholds', async () => {
+    expect(
+      healthState({ request_count: INSUFFICIENT_DATA_MIN_REQUESTS, error_rate: 0, p95_ms: 999 }),
+    ).toBe('healthy');
+  });
+
+  it('labels degraded at exactly p95 1000ms', async () => {
+    expect(
+      healthState({ request_count: INSUFFICIENT_DATA_MIN_REQUESTS, error_rate: 0, p95_ms: 1000 }),
+    ).toBe('degraded');
+  });
+
+  it('labels degraded at exactly error rate 1%', async () => {
+    expect(healthState({ request_count: 100, error_rate: 0.01, p95_ms: 100 })).toBe('degraded');
+  });
+
+  it('labels unhealthy at exactly p95 2000ms', async () => {
+    expect(healthState({ request_count: 100, error_rate: 0, p95_ms: 2000 })).toBe('unhealthy');
+  });
+
+  it('labels unhealthy at exactly error rate 5%', async () => {
+    expect(healthState({ request_count: 100, error_rate: 0.05, p95_ms: 100 })).toBe('unhealthy');
+  });
+
+  it('reflects threshold edges through the query API', async () => {
+    const { service } = await freshService();
+    // 20 requests, 1 error (5% error rate) -> unhealthy.
+    const events: EventV1[] = Array.from({ length: 20 }, (_, i) =>
+      makeEvent({
+        event_id: uuid(300 + i),
+        timestamp: NOW,
+        route: '/edge',
+        status_code: i === 0 ? 500 : 200,
+        duration_ms: 10,
+      }),
+    );
+    await service.ingest(SEED_KEY, makeBatch(events), NOW);
+    const response = await service.queryEndpoints(SEED_APP_ID, SEED_ENV_ID, '15m', NOW);
+    const endpoint = response.endpoints.find((e) => e.route === '/edge');
+    expect(endpoint).toBeDefined();
+    expect(endpoint!.request_count).toBe(20);
+    expect(endpoint!.error_count).toBe(1);
+    expect(endpoint!.error_rate).toBeCloseTo(0.05, 10);
+    expect(endpoint!.health_state).toBe('unhealthy');
+  });
+});
+
+describe('project and environment isolation', () => {
+  it('ingest into one environment does not appear in another', async () => {
+    const { service } = await freshService();
+    // Create a second app+environment.
+    const other = await service.createApp({ name: 'isolated-app', environment: 'prod' }, NOW);
+    const otherKey = other.key.key;
+    // Ingest into the other environment.
+    const events: EventV1[] = Array.from({ length: 5 }, (_, i) =>
+      makeEvent({
+        event_id: uuid(400 + i),
+        timestamp: NOW,
+        route: '/isolated',
+      }),
+    );
+    await service.ingest(otherKey, makeBatch(events), NOW);
+    // Query the seed environment: should not see /isolated.
+    const seedResponse = await service.queryEndpoints(SEED_APP_ID, SEED_ENV_ID, '15m', NOW);
+    expect(seedResponse.endpoints.find((e) => e.route === '/isolated')).toBeUndefined();
+    // Query the other environment: should see /isolated.
+    const otherResponse = await service.queryEndpoints(
+      other.app.id,
+      other.environment.id,
+      '15m',
+      NOW,
+    );
+    const found = otherResponse.endpoints.find((e) => e.route === '/isolated');
+    expect(found).toBeDefined();
+    expect(found!.request_count).toBe(5);
+  });
+
+  it('querying with a foreign app_id returns no metrics for another app', async () => {
+    const { service } = await freshService();
+    const other = await service.createApp({ name: 'cross-app', environment: 'prod' }, NOW);
+    await service.ingest(
+      other.key.key,
+      makeBatch([makeEvent({ event_id: uuid(410), timestamp: NOW, route: '/secret' })]),
+      NOW,
+    );
+    // Query with the seed app_id but the other environment_id.
+    const response = await service.queryEndpoints(SEED_APP_ID, other.environment.id, '15m', NOW);
+    expect(response.endpoints.find((e) => e.route === '/secret')).toBeUndefined();
+  });
+
+  it('installation status reflects per-environment state', async () => {
+    const { service } = await freshService();
+    const other = await service.createApp({ name: 'status-app', environment: 'prod' }, NOW);
+    // Before ingest: waiting.
+    const before = await service.installationStatus(other.app.id, other.environment.id, NOW);
+    expect(before.state).toBe('waiting');
+    // After ingest: connected.
+    await service.ingest(
+      other.key.key,
+      makeBatch([makeEvent({ event_id: uuid(420), timestamp: NOW, route: '/s' })]),
+      NOW,
+    );
+    const after = await service.installationStatus(other.app.id, other.environment.id, NOW);
+    expect(after.state).toBe('connected');
+    expect(after.runtime).toBe('node');
+  });
+});
+
+describe('empty traffic', () => {
+  it('returns an empty endpoint list for an environment with no traffic', async () => {
+    const { service } = await freshService();
+    const other = await service.createApp({ name: 'empty-app', environment: 'prod' }, NOW);
+    const response = await service.queryEndpoints(other.app.id, other.environment.id, '15m', NOW);
+    expect(response.endpoints).toEqual([]);
+  });
+
+  it('returns waiting installation status for an environment with no traffic', async () => {
+    const { service } = await freshService();
+    const other = await service.createApp({ name: 'empty-status-app', environment: 'prod' }, NOW);
+    const status = await service.installationStatus(other.app.id, other.environment.id, NOW);
+    expect(status.state).toBe('waiting');
+    expect(status.first_seen).toBeNull();
+    expect(status.last_seen).toBeNull();
+  });
+});
+
+describe('key verifier properties', () => {
+  it('generated keys use the ahk_ prefix and are hex', async () => {
+    const key = generateRawKey();
+    expect(key.startsWith(KEY_PREFIX)).toBe(true);
+    const body = key.slice(KEY_PREFIX.length);
+    expect(body).toMatch(/^[0-9a-f]+$/);
+  });
+
+  it('hashKey produces a non-reversible SHA-256 hex digest', async () => {
+    const verifier = await hashKey(SEED_KEY);
+    expect(verifier).toMatch(/^[0-9a-f]{64}$/);
+    // The verifier does not contain the raw key.
+    expect(verifier).not.toContain(SEED_KEY);
+  });
+
+  it('different keys produce different verifiers', async () => {
+    const a = await hashKey('ahk_aaa');
+    const b = await hashKey('ahk_bbb');
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('histogram bucket count invariant', () => {
+  it('every bucket has exactly LATENCY_HISTOGRAM_BUCKETS histogram entries', async () => {
+    const { service, adapter } = await freshService();
+    await service.ingest(
+      SEED_KEY,
+      makeBatch([makeEvent({ event_id: uuid(500), timestamp: NOW, route: '/h' })]),
+      NOW,
+    );
+    const buckets = await adapter
+      .asRepositories()
+      .buckets.queryBuckets(SEED_APP_ID, SEED_ENV_ID, NOW - 60_000, NOW + 60_000);
+    for (const b of buckets) {
+      expect(b.histogram.length).toBe(LATENCY_HISTOGRAM_BUCKETS);
+    }
+  });
+});

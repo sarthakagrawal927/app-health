@@ -6,6 +6,7 @@ import {
   SEED_KEY,
   SEED_APP_NAME,
   SEED_ENV_NAME,
+  buildCanonicalBatch,
 } from '@app-health/contracts';
 
 const LOCAL_ENV: Env = { APP_HEALTH_MODE: 'local' };
@@ -25,6 +26,10 @@ async function call(
   if (body !== undefined) init.body = JSON.stringify(body);
   const url = new URL(`https://worker.local${path}`);
   return worker.fetch(new Request(url, init), env);
+}
+
+function bearer(key: string): Record<string, string> {
+  return { authorization: `Bearer ${key}` };
 }
 
 describe('worker /v1/health', () => {
@@ -53,6 +58,26 @@ describe('worker owner APIs fail closed outside local mode', () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it('rejects /v1/installation/status outside local mode', async () => {
+    const res = await call(
+      'GET',
+      `/v1/installation/status?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}`,
+      NON_LOCAL_ENV,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects ingest outside local mode', async () => {
+    const res = await call(
+      'POST',
+      '/v1/ingest',
+      NON_LOCAL_ENV,
+      buildCanonicalBatch('node'),
+      bearer(SEED_KEY),
+    );
+    expect(res.status).toBe(403);
+  });
 });
 
 describe('worker local mode', () => {
@@ -70,6 +95,25 @@ describe('worker local mode', () => {
     expect(body.app.id).toBe(SEED_APP_ID);
     expect(body.environment.id).toBe(SEED_ENV_ID);
     expect(body.key.key).toBe(SEED_KEY);
+  });
+
+  it('creates a new app with a fresh one-time key for non-seed names', async () => {
+    const res = await call('POST', '/v1/apps', LOCAL_ENV, {
+      name: 'api-service',
+      environment: 'staging',
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      app: { id: string; name: string };
+      environment: { id: string; name: string; app_id: string };
+      key: { key: string };
+    };
+    expect(body.app.id).not.toBe(SEED_APP_ID);
+    expect(body.app.name).toBe('api-service');
+    expect(body.environment.name).toBe('staging');
+    expect(body.environment.app_id).toBe(body.app.id);
+    expect(body.key.key.startsWith('ahk_')).toBe(true);
+    expect(body.key.key).not.toBe(SEED_KEY);
   });
 
   it('rejects invalid app creation body', async () => {
@@ -117,11 +161,6 @@ describe('worker local mode', () => {
       LOCAL_ENV,
     );
     expect(res.status).toBe(400);
-  });
-
-  it('returns 501 for ingest in Wave 0', async () => {
-    const res = await call('POST', '/v1/ingest', LOCAL_ENV, { schema_version: 'v1', events: [] });
-    expect(res.status).toBe(501);
   });
 
   it('returns 404 for unknown paths', async () => {
