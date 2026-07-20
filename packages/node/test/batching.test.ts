@@ -89,5 +89,24 @@ describe('client batching and overflow', () => {
     expect(() =>
       createAppHealthClient({ key: 'k', endpoint: 'ftp://localhost/v1/ingest' }),
     ).toThrowError(/http\(s\) `endpoint`/);
+    expect(() =>
+      createAppHealthClient({ key: 'k', endpoint: 'https://user:secret@example.com/v1/ingest' }),
+    ).toThrowError(/http\(s\) `endpoint`/);
+  });
+
+  it('rejects invalid queue, batch, timeout, and retry bounds', () => {
+    const endpoint = 'http://localhost:8787/v1/ingest';
+    expect(() => createAppHealthClient({ key: 'k', endpoint, maxBatchSize: 0 })).toThrow(
+      /maxBatchSize/,
+    );
+    expect(() => createAppHealthClient({ key: 'k', endpoint, maxQueueSize: 0 })).toThrow(
+      /maxQueueSize/,
+    );
+    expect(() => createAppHealthClient({ key: 'k', endpoint, requestTimeoutMs: 0 })).toThrow(
+      /requestTimeoutMs/,
+    );
+    expect(() => createAppHealthClient({ key: 'k', endpoint, maxRetries: -1 })).toThrow(
+      /maxRetries/,
+    );
   });
 });

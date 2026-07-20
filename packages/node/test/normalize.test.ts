@@ -45,6 +45,7 @@ describe('normalizeRoutePath', () => {
     expect(normalizeRoutePath('users/1')).toBeNull();
     expect(normalizeRoutePath(undefined)).toBeNull();
     expect(normalizeRoutePath('')).toBeNull();
+    expect(normalizeRoutePath('/' + 'a'.repeat(300))).toBeNull();
   });
 });
 
@@ -64,8 +65,8 @@ describe('normalizeStatus / duration / release / timestamp', () => {
     expect(normalizeDuration(12.4)).toBe(12);
     expect(normalizeDuration(12.6)).toBe(13);
     expect(normalizeDuration(0)).toBe(0);
-    expect(normalizeDuration(-1)).toBe(0);
-    expect(normalizeDuration(-100)).toBe(0);
+    expect(normalizeDuration(-1)).toBeNull();
+    expect(normalizeDuration(-100)).toBeNull();
     expect(normalizeDuration(601_000)).toBeNull();
     expect(normalizeDuration(NaN)).toBeNull();
   });

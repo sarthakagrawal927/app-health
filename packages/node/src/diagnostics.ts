@@ -9,6 +9,8 @@ export interface AppHealthDiagnostics {
   droppedOverflow: number;
   /** Events dropped because they failed field normalization. */
   droppedInvalid: number;
+  /** Events abandoned after delivery retries were exhausted. */
+  droppedDelivery: number;
   /** Batches successfully accepted by ingest (HTTP 2xx). */
   sentBatches: number;
   /** Batches that exhausted retries and were abandoned. */
@@ -26,6 +28,7 @@ export function emptyDiagnostics(): AppHealthDiagnostics {
     queued: 0,
     droppedOverflow: 0,
     droppedInvalid: 0,
+    droppedDelivery: 0,
     sentBatches: 0,
     failedBatches: 0,
     retriedBatches: 0,

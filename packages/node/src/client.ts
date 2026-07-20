@@ -88,15 +88,42 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
   if (typeof options?.key !== 'string' || options.key.length === 0) {
     throw new Error('@app-health/node: createAppHealthClient requires a non-empty `key`');
   }
-  if (typeof options?.endpoint !== 'string' || !/^https?:\/\//i.test(options.endpoint)) {
+  const endpoint = parseEndpoint(options?.endpoint);
+  if (endpoint === null) {
     throw new Error('@app-health/node: createAppHealthClient requires an http(s) `endpoint`');
   }
-  const maxQueueSize = options.maxQueueSize ?? DEFAULTS.maxQueueSize;
-  const maxBatchSize = Math.min(options.maxBatchSize ?? DEFAULTS.maxBatchSize, MAX_BATCH_EVENTS);
-  const flushIntervalMs = options.flushIntervalMs ?? DEFAULTS.flushIntervalMs;
-  const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULTS.requestTimeoutMs;
-  const maxRetries = options.maxRetries ?? DEFAULTS.maxRetries;
-  const retryBackoffMs = options.retryBackoffMs ?? DEFAULTS.retryBackoffMs;
+  const endpointUrl = endpoint;
+  const maxQueueSize = boundedInteger(
+    'maxQueueSize',
+    options.maxQueueSize ?? DEFAULTS.maxQueueSize,
+    1,
+    1_000_000,
+  );
+  const maxBatchSize = boundedInteger(
+    'maxBatchSize',
+    options.maxBatchSize ?? DEFAULTS.maxBatchSize,
+    1,
+    MAX_BATCH_EVENTS,
+  );
+  const flushIntervalMs = boundedInteger(
+    'flushIntervalMs',
+    options.flushIntervalMs ?? DEFAULTS.flushIntervalMs,
+    1,
+    60 * 60 * 1000,
+  );
+  const requestTimeoutMs = boundedInteger(
+    'requestTimeoutMs',
+    options.requestTimeoutMs ?? DEFAULTS.requestTimeoutMs,
+    1,
+    60_000,
+  );
+  const maxRetries = boundedInteger('maxRetries', options.maxRetries ?? DEFAULTS.maxRetries, 0, 10);
+  const retryBackoffMs = boundedInteger(
+    'retryBackoffMs',
+    options.retryBackoffMs ?? DEFAULTS.retryBackoffMs,
+    0,
+    60_000,
+  );
   const fetchFn = options.fetch;
   const now = options.now ?? (() => Date.now());
   const uuid = options.randomUUID ?? randomUUID;
@@ -186,7 +213,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
       events,
     };
     const result: TransportResult = await sendBatch(batch, {
-      endpoint: options.endpoint,
+      endpoint: endpointUrl,
       key: options.key,
       requestTimeoutMs,
       maxRetries,
@@ -205,7 +232,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
       // the queue bounded and the flush loop terminating; record the loss in
       // diagnostics. Requeuing would risk an unbounded loop on persistent
       // outages and would defeat the fail-open guarantee.
-      diag.increment('droppedOverflow', events.length);
+      diag.increment('droppedDelivery', events.length);
       diag.setLastError(result.error);
     }
   }
@@ -226,6 +253,25 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
     close,
     diagnostics: () => diag.snapshot(),
   };
+}
+
+function parseEndpoint(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (url.username || url.password) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function boundedInteger(name: string, value: number, min: number, max: number): number {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`@app-health/node: ${name} must be an integer between ${min} and ${max}`);
+  }
+  return value;
 }
 
 // Re-export the diagnostics sink type for internal/external typing parity.

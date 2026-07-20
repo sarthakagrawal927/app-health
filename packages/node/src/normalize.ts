@@ -51,12 +51,8 @@ export function normalizeRoutePath(path: unknown): string | null {
     }
     out.push(isIdentifierSegment(seg) ? ':id' : seg);
   }
-  let normalized = out.join('/');
-  if (normalized.length > MAX_ROUTE_LENGTH) {
-    // Truncate at the bound rather than dropping the event; the ingest
-    // contract enforces the same limit and would reject otherwise.
-    normalized = normalized.slice(0, MAX_ROUTE_LENGTH);
-  }
+  const normalized = out.join('/');
+  if (normalized.length > MAX_ROUTE_LENGTH) return null;
   return normalized;
 }
 
@@ -77,7 +73,8 @@ export function normalizeStatus(status: unknown): number | null {
 /** Bound and validate a duration in milliseconds. Returns null if invalid. */
 export function normalizeDuration(durationMs: unknown): number | null {
   if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) return null;
-  const rounded = Math.max(0, Math.round(durationMs));
+  if (durationMs < 0) return null;
+  const rounded = Math.round(durationMs);
   if (!Number.isInteger(rounded)) return null;
   if (rounded < 0 || rounded > MAX_DURATION_MS) return null;
   return rounded;

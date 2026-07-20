@@ -74,6 +74,7 @@ describe('client retry and outage behavior', () => {
     expect(controller.callCount()).toBe(2);
     const d = client.diagnostics();
     expect(d.failedBatches).toBe(1);
+    expect(d.droppedDelivery).toBe(1);
     expect(d.lastSendError).toMatch(/ECONNREFUSED|timeout/);
   });
 
