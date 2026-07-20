@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  DEGRADED_ERROR_RATE,
+  DEGRADED_P95_MS,
+  INSUFFICIENT_DATA_MIN_REQUESTS,
   SEED_APP_ID,
   SEED_APP_NAME,
   SEED_ENV_ID,
   SEED_ENV_NAME,
+  UNHEALTHY_ERROR_RATE,
+  UNHEALTHY_P95_MS,
   WINDOWS,
   type CreateAppResponseV1,
   type EndpointAggregateV1,
@@ -570,13 +575,22 @@ function Dashboard({
           <strong>How health is decided</strong>
           <p>
             <span className="dot healthy" />
-            Healthy <b>under 1% errors &amp; 1s p95</b>
+            Healthy{' '}
+            <b>
+              under {DEGRADED_ERROR_RATE * 100}% errors &amp; {DEGRADED_P95_MS / 1000}s p95
+            </b>
             <span className="dot degraded" />
-            Degraded <b>≥1% errors or 1s p95</b>
+            Degraded{' '}
+            <b>
+              ≥{DEGRADED_ERROR_RATE * 100}% errors or {DEGRADED_P95_MS / 1000}s p95
+            </b>
             <span className="dot unhealthy" />
-            Unhealthy <b>≥5% errors or 2s p95</b>
+            Unhealthy{' '}
+            <b>
+              ≥{UNHEALTHY_ERROR_RATE * 100}% errors or {UNHEALTHY_P95_MS / 1000}s p95
+            </b>
             <span className="dot low" />
-            Low volume <b>under 20 requests</b>
+            Low volume <b>under {INSUFFICIENT_DATA_MIN_REQUESTS} requests</b>
           </p>
         </section>
         <footer>
