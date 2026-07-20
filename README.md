@@ -1,21 +1,20 @@
 # app-health
 
 App Health V0 gives a Go or Node application an ingest key and shows how every
-observed endpoint is performing. This repository contains the V0 foundation:
-workspace, contracts, a credential-free in-memory development adapter, and
-tooling. The full SDKs, ingest, and dashboard land in later waves.
+observed endpoint is performing. It includes Express and `net/http` SDKs,
+aggregate-only ingest, and a responsive local operator dashboard.
 
 ## Repository layout
 
 ```
 apps/
-  web/      Vite + React operator shell (Wave 0: seeded observed-endpoint table)
+  web/      Vite + React setup flow and observed-endpoint dashboard
   worker/   Cloudflare Worker entry point + in-memory dev adapter
 packages/
   contracts/  V1 event, aggregate, app/key, installation-status, query
               contracts with zod runtime validation and canonical fixtures
-  node/       @app-health/node SDK (Wave 0 scaffold; Wave 1 implements middleware)
-  go/         Go 1.22 module mirroring the V1 contracts and fixtures (stdlib only)
+  node/       @app-health/node client and optional Express middleware
+  go/         Go 1.22 client and net/http middleware (stdlib only)
 openspec/changes/build-endpoint-health-v0/   Active V0 OpenSpec change
 ```
 
@@ -75,9 +74,23 @@ go vet ./...
 pnpm --filter @app-health/web dev
 ```
 
-The web shell expects the worker API at `VITE_APP_HEALTH_API` (defaults to
-`http://localhost:8787`). Wave 0 does not wire a `wrangler dev` script; the
-shell can be pointed at any endpoint serving the V1 contract.
+Vite serves the credential-free, in-memory Worker API on the same local origin,
+so setup, ingest, installation checks, and endpoint queries work without a
+deployment. Set `VITE_APP_HEALTH_API` only when pointing the UI at another V1
+API implementation.
+
+For a populated local view, open `/?demo=populated`. This development-only
+route uses the seeded project and never exposes its key.
+
+## UI evidence
+
+Current browser captures are checked in under `docs/screenshots`:
+
+| State               | Desktop                                             | Mobile                                             |
+| ------------------- | --------------------------------------------------- | -------------------------------------------------- |
+| Setup               | [setup](docs/screenshots/setup-desktop.png)         | [setup](docs/screenshots/setup-mobile.png)         |
+| Waiting for traffic | [waiting](docs/screenshots/waiting-desktop.png)     | [waiting](docs/screenshots/waiting-mobile.png)     |
+| Populated endpoints | [populated](docs/screenshots/populated-desktop.png) | [populated](docs/screenshots/populated-mobile.png) |
 
 ## V1 contract surface
 
@@ -127,28 +140,20 @@ V0 collects **only** method, normalized route, status code, duration,
 timestamp, and optional release. It MUST NOT collect headers, cookies, query
 values, route parameter values, request or response bodies, user identity,
 logs, stack traces, or spans. The contract validators reject unknown fields;
-the SDKs (Wave 1) enforce the same boundary at capture time.
+both SDKs enforce the same boundary at capture time.
 
 ## No-deploy / no-production-auth boundary
 
 - Owner APIs (`POST /v1/apps`, `GET /v1/endpoints`, `GET /v1/installation/status`)
   fail closed with HTTP 403 outside `APP_HEALTH_MODE=local`.
-- `POST /v1/ingest` returns HTTP 501 in Wave 0; Wave 1 implements
-  authenticated ingest against the same adapter interface.
+- `POST /v1/ingest` authenticates an environment-scoped key and writes only
+  one-minute aggregate buckets through the local adapter.
 - No `wrangler deploy`, no Cloudflare resource creation, no credentials, no
   env files, no production identity adapter. Production auth selection and
   deployment are explicit later work tracked in `PROJECT_STATUS.md`.
 
-## Wave 0 scope
+## Current boundary
 
-This repository implements Wave 0 tasks 1.1-1.5 of
-`openspec/changes/build-endpoint-health-v0/tasks.md`:
-
-- 1.1 pnpm TypeScript workspace + Go 1.22 module
-- 1.2 format/lint/typecheck/test/build commands + checked-in lockfile + CI
-- 1.3 runtime-validated v1 contracts + canonical Node and Go fixtures
-- 1.4 credential-free in-memory dev adapter + seeded endpoint metrics
-- 1.5 this document
-
-Wave 1 (ingest, SDKs, aggregation) and Wave 2 (dashboard) are out of scope
-here and tracked in the OpenSpec change.
+The endpoint-only V0 is implemented and locally proven. Production identity,
+durable Cloudflare resources, deployment, alerts, traces, logs, and broader
+incident workflows remain explicitly out of scope.
