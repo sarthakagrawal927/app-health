@@ -8,30 +8,30 @@
 
 ## 2. Project key and endpoint ingestion (Wave 1A, backend Devin agent)
 
-- [ ] 2.1 Add additive D1 schema and repository interfaces for apps, environments, key verifiers, installation status, deduplication, and one-minute endpoint aggregate buckets.
-- [ ] 2.2 Implement local owner identity, app creation, one-time key display, non-reversible key verification, and key revocation; fail owner APIs closed outside local mode without an identity adapter.
-- [ ] 2.3 Implement authenticated v1 batch ingest with field bounds, schema validation, clock-skew checks, idempotent event handling, and no raw-event persistence.
-- [ ] 2.4 Implement fixed latency histograms, one-minute aggregation, window merging, p50/p95 approximation, error rate, last seen, and deterministic health-state calculation.
-- [ ] 2.5 Implement installation-status and 15-minute, 1-hour, and 24-hour endpoint query APIs with project/environment isolation.
-- [ ] 2.6 Add backend tests for invalid/revoked keys, unsafe/unknown fields, duplicate events, histogram merging, threshold edges, environment isolation, empty traffic, and non-local auth failure.
+- [x] 2.1 Add additive D1 schema and repository interfaces for apps, environments, key verifiers, installation status, deduplication, and one-minute endpoint aggregate buckets.
+- [x] 2.2 Implement local owner identity, app creation, one-time key display, non-reversible key verification, and key revocation; fail owner APIs closed outside local mode without an identity adapter.
+- [x] 2.3 Implement authenticated v1 batch ingest with field bounds, schema validation, clock-skew checks, idempotent event handling, and no raw-event persistence.
+- [x] 2.4 Implement fixed latency histograms, one-minute aggregation, window merging, p50/p95 approximation, error rate, last seen, and deterministic health-state calculation.
+- [x] 2.5 Implement installation-status and 15-minute, 1-hour, and 24-hour endpoint query APIs with project/environment isolation.
+- [x] 2.6 Add backend tests for invalid/revoked keys, unsafe/unknown fields, duplicate events, histogram merging, threshold edges, environment isolation, empty traffic, and non-local auth failure.
 
 ## 3. Node SDK (Wave 1B, Node Devin agent)
 
-- [ ] 3.1 Implement the minimal `@app-health/node` client and Express middleware using the v1 contract.
-- [ ] 3.2 Capture method, framework route template, status, duration, timestamp, and optional release after response completion, with conservative numeric/UUID fallback normalization.
-- [ ] 3.3 Implement bounded asynchronous batching, short timeouts, bounded retries, queue-pressure drops, graceful flush, and local diagnostic counters.
-- [ ] 3.4 Prove serialized batches never contain headers, cookies, query values, parameter values, bodies, identity, logs, stacks, or spans.
-- [ ] 3.5 Add Express behavior, route normalization, status/error, ingest-outage, retry, overflow, shutdown, and request-content exclusion tests plus a small overhead benchmark.
-- [ ] 3.6 Add a runnable Express example that uses a supplied key and local ingest URL without committing any key or env file.
+- [x] 3.1 Implement the minimal `@app-health/node` client and Express middleware using the v1 contract.
+- [x] 3.2 Capture method, framework route template, status, duration, timestamp, and optional release after response completion, with conservative numeric/UUID fallback normalization.
+- [x] 3.3 Implement bounded asynchronous batching, short timeouts, bounded retries, queue-pressure drops, graceful flush, and local diagnostic counters.
+- [x] 3.4 Prove serialized batches never contain headers, cookies, query values, parameter values, bodies, identity, logs, stacks, or spans.
+- [x] 3.5 Add Express behavior, route normalization, status/error, ingest-outage, retry, overflow, shutdown, and request-content exclusion tests plus a small overhead benchmark.
+- [x] 3.6 Add a runnable Express example that uses a supplied key and local ingest URL without committing any key or env file.
 
 ## 4. Go SDK (Wave 1C, Go Devin agent)
 
-- [ ] 4.1 Implement idiomatic `net/http` middleware and client configuration in `packages/go` using the v1 contract.
-- [ ] 4.2 Capture method, Go 1.22 request pattern or route-resolver value, status, duration, timestamp, and optional release with conservative fallback normalization.
-- [ ] 4.3 Preserve handler response behavior and supported optional interfaces while implementing bounded asynchronous delivery, timeouts, retries, overflow drops, and close/flush.
-- [ ] 4.4 Prove serialized batches never contain headers, cookies, query values, concrete path values when a pattern exists, bodies, identity, logs, stacks, or spans.
-- [ ] 4.5 Add ServeMux, custom status/body, optional-interface, panic, resolver, normalization, outage, retry, overflow, close, and request-content exclusion tests plus a benchmark.
-- [ ] 4.6 Add a runnable Go example that uses a supplied key and local ingest URL without committing any key or env file.
+- [x] 4.1 Implement idiomatic `net/http` middleware and client configuration in `packages/go` using the v1 contract.
+- [x] 4.2 Capture method, Go 1.22 request pattern or route-resolver value, status, duration, timestamp, and optional release with conservative fallback normalization.
+- [x] 4.3 Preserve handler response behavior and supported optional interfaces while implementing bounded asynchronous delivery, timeouts, retries, overflow drops, and close/flush.
+- [x] 4.4 Prove serialized batches never contain headers, cookies, query values, concrete path values when a pattern exists, bodies, identity, logs, stacks, or spans.
+- [x] 4.5 Add ServeMux, custom status/body, optional-interface, panic, resolver, normalization, outage, retry, overflow, close, and request-content exclusion tests plus a benchmark.
+- [x] 4.6 Add a runnable Go example that uses a supplied key and local ingest URL without committing any key or env file.
 
 ## 5. Endpoint dashboard (Wave 2, dashboard Devin agent)
 

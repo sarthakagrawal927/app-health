@@ -8,7 +8,7 @@
 
 import type { EventBatchV1 } from '@app-health/contracts';
 
-export type FetchLike = typeof fetch;
+export type FetchLike = (input: string, init: RequestInit) => Promise<{ status: number }>;
 
 export interface TransportOptions {
   endpoint: string;
@@ -41,7 +41,7 @@ export async function sendBatch(
   for (let attempt = 0; attempt <= options.maxRetries; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.requestTimeoutMs);
-    let response: Response;
+    let response: { status: number };
     try {
       response = await fetchFn(options.endpoint, {
         method: 'POST',
