@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS environments (
   app_id TEXT NOT NULL,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL,
+  UNIQUE (id, app_id),
   FOREIGN KEY (app_id) REFERENCES apps (id)
 );
 
@@ -30,7 +31,8 @@ CREATE TABLE IF NOT EXISTS keys (
   environment_id TEXT NOT NULL,
   verifier_hash TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
-  revoked_at INTEGER
+  revoked_at INTEGER,
+  FOREIGN KEY (environment_id, app_id) REFERENCES environments (id, app_id)
 );
 
 -- Installation verification state per (app_id, environment_id). Updated on the
@@ -41,7 +43,8 @@ CREATE TABLE IF NOT EXISTS installation_status (
   runtime TEXT,
   first_seen INTEGER,
   last_seen INTEGER,
-  PRIMARY KEY (app_id, environment_id)
+  PRIMARY KEY (app_id, environment_id),
+  FOREIGN KEY (environment_id, app_id) REFERENCES environments (id, app_id)
 );
 
 -- Bounded deduplication window for event IDs. A retry of the same event_id
@@ -49,10 +52,12 @@ CREATE TABLE IF NOT EXISTS installation_status (
 -- Rows are pruned to the dedupe window by a scheduled cleanup; V0 keeps the
 -- table small and additive only.
 CREATE TABLE IF NOT EXISTS seen_events (
-  event_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL,
   app_id TEXT NOT NULL,
   environment_id TEXT NOT NULL,
-  seen_at INTEGER NOT NULL
+  seen_at INTEGER NOT NULL,
+  PRIMARY KEY (app_id, environment_id, event_id),
+  FOREIGN KEY (environment_id, app_id) REFERENCES environments (id, app_id)
 );
 
 -- One-minute endpoint aggregate buckets. Raw request events are NEVER stored.
@@ -69,7 +74,8 @@ CREATE TABLE IF NOT EXISTS endpoint_buckets (
   duration_sum_ms INTEGER NOT NULL,
   last_seen INTEGER,
   histogram TEXT NOT NULL,
-  PRIMARY KEY (app_id, environment_id, bucket_start, method, route)
+  PRIMARY KEY (app_id, environment_id, bucket_start, method, route),
+  FOREIGN KEY (environment_id, app_id) REFERENCES environments (id, app_id)
 );
 
 -- Window scans filter by bucket_start; this index keeps those scans bounded.

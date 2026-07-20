@@ -81,7 +81,7 @@ describe('worker owner APIs fail closed outside local mode', () => {
 });
 
 describe('worker local mode', () => {
-  it('creates the seeded app and returns the one-time key', async () => {
+  it('creates an app and returns a fresh one-time key', async () => {
     const res = await call('POST', '/v1/apps', LOCAL_ENV, {
       name: SEED_APP_NAME,
       environment: SEED_ENV_NAME,
@@ -92,9 +92,10 @@ describe('worker local mode', () => {
       environment: { id: string; name: string };
       key: { key: string };
     };
-    expect(body.app.id).toBe(SEED_APP_ID);
-    expect(body.environment.id).toBe(SEED_ENV_ID);
-    expect(body.key.key).toBe(SEED_KEY);
+    expect(body.app.id).not.toBe(SEED_APP_ID);
+    expect(body.environment.id).not.toBe(SEED_ENV_ID);
+    expect(body.key.key.startsWith('ahk_')).toBe(true);
+    expect(body.key.key).not.toBe(SEED_KEY);
   });
 
   it('creates a new app with a fresh one-time key for non-seed names', async () => {

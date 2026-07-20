@@ -20,13 +20,7 @@ import {
   type KeyRecordV1,
   type Window,
 } from '@app-health/contracts';
-import {
-  SEED_APP_ID,
-  SEED_APP_NAME,
-  SEED_ENV_ID,
-  SEED_ENV_NAME,
-  SEED_KEY,
-} from '@app-health/contracts';
+import { SEED_APP_ID, SEED_ENV_ID } from '@app-health/contracts';
 import type { AppHealthRepositories } from './repository.js';
 import { isErrorStatus } from './in-memory-adapter.js';
 
@@ -40,23 +34,6 @@ export class AppHealthService {
 
   /** Create an app + environment + one-time ingest key. */
   async createApp(request: CreateAppRequest, now: number): Promise<CreateAppResponseV1> {
-    // The seeded demo app is returned idempotently for the seed name pair so
-    // the dashboard has a stable demo surface. Other names create new records.
-    if (request.name === SEED_APP_NAME && request.environment === SEED_ENV_NAME) {
-      const seedApp = await this.repos.apps.getApp(SEED_APP_ID);
-      const seedEnv = await this.repos.environments.getEnvironment(SEED_ENV_ID);
-      const seedKey = await this.repos.keys.getActiveKeyForEnvironment(SEED_APP_ID, SEED_ENV_ID);
-      return {
-        app: seedApp!,
-        environment: seedEnv!,
-        key: {
-          key: SEED_KEY,
-          app_id: SEED_APP_ID,
-          environment_id: SEED_ENV_ID,
-          created_at: seedKey?.created_at ?? now,
-        },
-      };
-    }
     const app = await this.repos.apps.createApp(request.name, now);
     const env = await this.repos.environments.createEnvironment(app.id, request.environment, now);
     const { record, rawKey } = await this.repos.keys.createKey(app.id, env.id, now);
@@ -107,12 +84,22 @@ export class AppHealthService {
     let accepted = 0;
     let duplicates = 0;
     for (const event of batch.events) {
-      const seen = await this.repos.dedupe.markSeen(event.event_id, now);
+      const seen = await this.repos.dedupe.markSeen(
+        keyRecord.app_id,
+        keyRecord.environment_id,
+        event.event_id,
+        now,
+      );
       if (!seen) {
         duplicates += 1;
         continue;
       }
-      await this.applyEvent(keyRecord, event);
+      try {
+        await this.applyEvent(keyRecord, event);
+      } catch (error) {
+        await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, event.event_id);
+        throw error;
+      }
       accepted += 1;
     }
     if (accepted > 0) {

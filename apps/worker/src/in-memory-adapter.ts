@@ -68,10 +68,6 @@ function newId(prefix: string): string {
   return `${prefix}-${hex}`;
 }
 
-interface InMemoryKey extends KeyRecordV1 {
-  rawKey: string;
-}
-
 interface InstallationRow {
   app_id: string;
   environment_id: string;
@@ -96,8 +92,8 @@ export class InMemoryAdapter
 {
   private readonly apps = new Map<string, AppV1>();
   private readonly environments = new Map<string, EnvironmentV1>();
-  private readonly keysById = new Map<string, InMemoryKey>();
-  private readonly keysByVerifier = new Map<string, InMemoryKey>();
+  private readonly keysById = new Map<string, KeyRecordV1>();
+  private readonly keysByVerifier = new Map<string, KeyRecordV1>();
   private readonly installation = new Map<string, InstallationRow>();
   private readonly seenEvents = new Map<string, number>();
   private readonly buckets = new Map<string, BucketV1>();
@@ -140,14 +136,13 @@ export class InMemoryAdapter
       created_at: seedNow,
     });
     const seedVerifier = await hashKey(SEED_KEY);
-    const seedKey: InMemoryKey = {
+    const seedKey: KeyRecordV1 = {
       id: 'key-seed-0001',
       app_id: SEED_APP_ID,
       environment_id: SEED_ENV_ID,
       verifier_hash: seedVerifier,
       created_at: seedNow,
       revoked_at: null,
-      rawKey: SEED_KEY,
     };
     this.keysById.set(seedKey.id, seedKey);
     this.keysByVerifier.set(seedVerifier, seedKey);
@@ -209,27 +204,24 @@ export class InMemoryAdapter
   }> {
     const rawKey = generateRawKey();
     const verifier = await hashKey(rawKey);
-    const record: InMemoryKey = {
+    const record: KeyRecordV1 = {
       id: newId('key'),
       app_id: appId,
       environment_id: envId,
       verifier_hash: verifier,
       created_at: now,
       revoked_at: null,
-      rawKey,
     };
     this.keysById.set(record.id, record);
     this.keysByVerifier.set(verifier, record);
-    const { rawKey: _raw, ...stored } = record;
-    return { record: stored, rawKey };
+    return { record: { ...record }, rawKey };
   }
 
   async verifyKey(rawKey: string): Promise<KeyRecordV1 | null> {
     const verifier = await hashKey(rawKey);
     const found = this.keysByVerifier.get(verifier);
     if (!found || found.revoked_at !== null) return null;
-    const { rawKey: _raw, ...stored } = found;
-    return stored;
+    return { ...found };
   }
 
   async revokeKey(keyId: string, now: number): Promise<void> {
@@ -241,8 +233,7 @@ export class InMemoryAdapter
   async getActiveKeyForEnvironment(appId: string, envId: string): Promise<KeyRecordV1 | null> {
     for (const key of this.keysById.values()) {
       if (key.app_id === appId && key.environment_id === envId && key.revoked_at === null) {
-        const { rawKey: _raw, ...stored } = key;
-        return stored;
+        return { ...key };
       }
     }
     return null;
@@ -271,7 +262,7 @@ export class InMemoryAdapter
   async getStatus(appId: string, envId: string, now: number): Promise<InstallationStatusV1> {
     const key = `${appId}|${envId}`;
     // Revoked key takes precedence so the operator sees the real blocker.
-    const envKey = this.getActiveKeyForEnvironment(appId, envId);
+    const envKey = await this.getActiveKeyForEnvironment(appId, envId);
     let revoked = false;
     if (!envKey) {
       // If a key exists but is revoked, report revoked.
@@ -321,11 +312,16 @@ export class InMemoryAdapter
 
   // --- DedupeRepository ---
 
-  async markSeen(eventId: string, now: number): Promise<boolean> {
+  async markSeen(appId: string, envId: string, eventId: string, now: number): Promise<boolean> {
     this.pruneDedupe(now);
-    if (this.seenEvents.has(eventId)) return false;
-    this.seenEvents.set(eventId, now);
+    const key = `${appId}|${envId}|${eventId}`;
+    if (this.seenEvents.has(key)) return false;
+    this.seenEvents.set(key, now);
     return true;
+  }
+
+  async forget(appId: string, envId: string, eventId: string): Promise<void> {
+    this.seenEvents.delete(`${appId}|${envId}|${eventId}`);
   }
 
   private pruneDedupe(now: number): void {

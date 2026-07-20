@@ -62,7 +62,9 @@ export interface InstallationRepository {
  * seen within the window, false when it is a duplicate.
  */
 export interface DedupeRepository {
-  markSeen(eventId: string, now: number): Promise<boolean>;
+  markSeen(appId: string, envId: string, eventId: string, now: number): Promise<boolean>;
+  /** Release a claim when aggregate persistence fails so the SDK can retry. */
+  forget(appId: string, envId: string, eventId: string): Promise<void>;
 }
 
 /**

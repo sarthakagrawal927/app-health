@@ -105,6 +105,19 @@ describe('ingest key authentication', () => {
     const after = await service.ingest(rawKey, ingestBatch, NOW);
     expect(after.ok).toBe(false);
     if (!after.ok) expect(after.status).toBe(401);
+    const status = await service.installationStatus(created.app.id, created.environment.id, NOW);
+    expect(status.state).toBe('revoked');
+  });
+
+  it('stores only the verifier after returning a one-time key', async () => {
+    const { service, adapter } = await freshService();
+    const created = await service.createApp({ name: 'key-storage-test', environment: 'prod' }, NOW);
+    const record = await adapter
+      .asRepositories()
+      .keys.getActiveKeyForEnvironment(created.app.id, created.environment.id);
+    expect(record).not.toBeNull();
+    expect(record).not.toHaveProperty('rawKey');
+    expect(record?.verifier_hash).not.toBe(created.key.key);
   });
 });
 
@@ -226,6 +239,41 @@ describe('ingest idempotent event handling', () => {
       expect(result.accepted).toBe(1);
       expect(result.duplicates).toBe(1);
     }
+  });
+
+  it('scopes identical event IDs to their app and environment', async () => {
+    const { service } = await freshService();
+    const first = await service.createApp({ name: 'dedupe-a', environment: 'prod' }, NOW);
+    const second = await service.createApp({ name: 'dedupe-b', environment: 'prod' }, NOW);
+    const sharedEvent = makeEvent({ event_id: uuid(22), timestamp: NOW, route: '/shared-id' });
+    const firstResult = await service.ingest(first.key.key, makeBatch([sharedEvent]), NOW);
+    const secondResult = await service.ingest(second.key.key, makeBatch([sharedEvent]), NOW);
+    expect(firstResult).toMatchObject({ ok: true, accepted: 1 });
+    expect(secondResult).toMatchObject({ ok: true, accepted: 1 });
+  });
+
+  it('releases the dedupe claim when aggregate persistence fails', async () => {
+    const adapter = await InMemoryAdapter.create();
+    const repos = adapter.asRepositories();
+    const buckets = repos.buckets;
+    let failOnce = true;
+    repos.buckets = {
+      async upsertBucket(input) {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error('simulated aggregate failure');
+        }
+        await buckets.upsertBucket(input);
+      },
+      queryBuckets: (appId, envId, from, to) => buckets.queryBuckets(appId, envId, from, to),
+    };
+    const service = new AppHealthService(repos);
+    const event = makeEvent({ event_id: uuid(23), timestamp: NOW, route: '/retry-after-failure' });
+    await expect(service.ingest(SEED_KEY, makeBatch([event]), NOW)).rejects.toThrow(
+      'simulated aggregate failure',
+    );
+    const retry = await service.ingest(SEED_KEY, makeBatch([event]), NOW);
+    expect(retry).toMatchObject({ ok: true, accepted: 1, duplicates: 0 });
   });
 });
 
