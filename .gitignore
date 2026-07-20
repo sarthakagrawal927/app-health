@@ -10,3 +10,4 @@ dist/
 *.tsbuildinfo
 .turbo/
 coverage/
+/examples/go/go
