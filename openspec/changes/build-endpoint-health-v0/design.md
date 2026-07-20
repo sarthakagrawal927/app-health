@@ -56,6 +56,10 @@ An endpoint is `insufficient-data` below 20 requests in the selected window. Oth
 
 The project/key setup API depends on an owner identity interface. Local development supplies a clearly marked single-operator adapter. Non-local execution without a configured production identity rejects owner API access. Ingest-key authentication remains separate. Production authentication selection and deployment require a later explicit change.
 
+### Treat visual quality as a V0 acceptance gate
+
+The dashboard uses a restrained local design system with clear typography, spacing, semantic status colors, accessible contrast and focus states, and responsive behavior. The endpoint table stays dense and scannable on desktop and becomes an intentional card/list treatment on narrow screens rather than a clipped table. Setup, waiting, populated, stale, and error states receive the same visual care as the happy path. Browser-verified desktop and mobile screenshots are required evidence, not optional polish.
+
 ### Use Cloudflare-compatible adapters without provisioning Cloudflare
 
 The Worker implementation targets Cloudflare and an additive D1 schema, with repository interfaces and an in-memory test adapter. The web app is Vite/React. No wrangler deploy, cloud resource creation, credential access, or production configuration is part of V0 implementation.
@@ -68,6 +72,7 @@ The Worker implementation targets Cloudflare and an additive D1 schema, with rep
 - **Approximate histogram percentiles surprise users** → document bucket bounds, test merging, and show rounded values rather than false precision.
 - **Unauthenticated local setup is deployed accidentally** → non-local owner APIs fail closed without an identity adapter and deployment remains explicitly out of scope.
 - **D1 does not fit future volume** → aggregates are behind a repository; measure before selecting a higher-scale store.
+- **A technically functional scaffold looks unfinished** → require visual-state coverage, responsive screenshots, and parent screenshot review before V0 acceptance.
 
 ## Migration Plan
 

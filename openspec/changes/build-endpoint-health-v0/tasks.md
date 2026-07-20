@@ -37,10 +37,10 @@
 
 - [ ] 5.1 Implement the Vite/React local operator flow to create an app, display the key once, and show Node and Go install snippets.
 - [ ] 5.2 Implement installation states for waiting, connected, stale, revoked/invalid key, and temporary API failure with a concrete next action.
-- [ ] 5.3 Implement the observed-endpoint table with method/route, request count, error rate, p50, p95, last seen, health state, refresh time, and 15-minute/1-hour/24-hour selection.
-- [ ] 5.4 Implement stable sorting by health, requests, error rate, p95, and last seen, with visible metric/threshold explanations and accessible table behavior.
+- [ ] 5.3 Implement a cohesive, polished visual system and the observed-endpoint table with method/route, request count, error rate, p50, p95, last seen, health state, refresh time, and 15-minute/1-hour/24-hour selection.
+- [ ] 5.4 Implement stable sorting by health, requests, error rate, p95, and last seen, with visible metric/threshold explanations, accessible contrast/focus behavior, and an intentional narrow-screen card/list layout.
 - [ ] 5.5 Add UI tests for project setup, one-time key behavior, no-traffic, populated windows, low-volume state, sorting, stale data, and API failure.
-- [ ] 5.6 Capture desktop and mobile browser evidence for setup, waiting, and populated endpoint states without deploying.
+- [ ] 5.6 Capture and check in six current browser screenshots: desktop and mobile views for setup, waiting-for-traffic, and populated endpoint states, without deploying.
 
 ## 6. End-to-end proof and handoff (Wave 3, parent review)
 
@@ -49,4 +49,5 @@
 - [ ] 6.3 Prove both SDKs fail open during ingest outage and remain within their documented benchmark budgets.
 - [ ] 6.4 Run full format/lint, typecheck, TypeScript tests, Go tests, builds, OpenSpec validation, and `git diff --check` from a clean install.
 - [ ] 6.5 Review dependencies, public SDK APIs, privacy exclusions, tenant/environment scope, raw-event absence, and the non-local owner-auth fail-closed path.
-- [ ] 6.6 Update `PROJECT_STATUS.md` with only verified shipped behavior, archive the V0 OpenSpec change when complete, and leave production auth/deployment as explicit later work.
+- [ ] 6.6 Review all six screenshots for hierarchy, density, responsive behavior, accessibility, and visual finish; send dashboard fixes back before acceptance.
+- [ ] 6.7 Update `PROJECT_STATUS.md` with only verified shipped behavior, archive the V0 OpenSpec change when complete, and leave production auth/deployment as explicit later work.

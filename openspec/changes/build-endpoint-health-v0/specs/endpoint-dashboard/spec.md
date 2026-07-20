@@ -34,3 +34,17 @@ The dashboard SHALL distinguish no traffic yet, stale traffic, invalid or revoke
 #### Scenario: New app has no telemetry
 - **WHEN** no valid endpoint event has been received
 - **THEN** the page shows the install snippet and a waiting-for-traffic state rather than an empty healthy table
+
+### Requirement: Polished responsive presentation
+The dashboard SHALL use a cohesive visual system, accessible contrast and focus states, clear information hierarchy, and intentional responsive layouts for setup, waiting, populated, stale, and error states.
+
+#### Scenario: Narrow viewport shows populated endpoints
+- **WHEN** the populated dashboard is viewed at a mobile width
+- **THEN** endpoint identity, health, key metrics, and primary controls remain readable and operable without clipped content or horizontal page scrolling
+
+### Requirement: Screenshot evidence
+The implementation SHALL produce browser-verified desktop and mobile screenshots of setup, waiting-for-traffic, and populated endpoint states for parent review.
+
+#### Scenario: Dashboard work is submitted for review
+- **WHEN** the dashboard agent reports its work complete
+- **THEN** six current screenshots cover the three required states at desktop and mobile widths
