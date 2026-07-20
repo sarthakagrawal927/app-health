@@ -2,11 +2,9 @@ package apphealth
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -97,63 +95,21 @@ func (c *Client) record(rw *responseWriter, r *http.Request, start time.Time, el
 
 // resolveRoute picks the route identity in priority order:
 //  1. configured RouteResolver (if any and returns non-empty)
-//  2. Go 1.22 Request.Pattern (ServeMux), converted to :wildcard form
+//  2. Go 1.23+ Request.Pattern (ServeMux), converted to :wildcard form
 //  3. conservative numeric/UUID fallback on the concrete path
 func (c *Client) resolveRoute(r *http.Request) string {
 	if c.cfg.RouteResolver != nil {
 		if route := c.cfg.RouteResolver(r); route != "" {
-			return truncateRoute(route)
-		}
-	}
-	if pat := requestPattern(r); pat != "" {
-		if route := patternToRoute(pat); route != "" {
+			if len(route) > MaxRouteLength {
+				return ""
+			}
 			return route
 		}
 	}
+	if pattern, ok := requestPattern(r); ok {
+		return patternToRoute(pattern)
+	}
 	return normalizeRouteFallback(r.URL.Path)
-}
-
-func truncateRoute(s string) string {
-	if len(s) > MaxRouteLength {
-		return s[:MaxRouteLength]
-	}
-	return s
-}
-
-// requestPattern returns the Go 1.22+ ServeMux pattern string for r, or "".
-// Request.Pattern is populated only when the request was dispatched by a
-// ServeMux. The field's concrete type has changed across Go releases (it was
-// an unexported pointer in 1.22, exported as *http.Pattern in 1.23, and a
-// string in later releases), so it is read by name via reflection to stay
-// compatible with the go 1.22 module directive without tripping the
-// http.Pattern go1.23 build gate on newer toolchains. The value is rendered
-// via fmt.Stringer when available.
-func requestPattern(r *http.Request) string {
-	f := reflect.ValueOf(r).Elem().FieldByName("Pattern")
-	if !f.IsValid() {
-		return ""
-	}
-	switch f.Kind() {
-	case reflect.String:
-		return f.String()
-	case reflect.Ptr, reflect.Interface:
-		if f.IsNil() {
-			return ""
-		}
-		// The pattern type implements fmt.Stringer. Call String() via
-		// reflection so we never reference the (possibly unexported) concrete
-		// type and never rely on fmt's reflect.Value formatting.
-		elem := f.Elem()
-		if m := elem.MethodByName("String"); m.IsValid() {
-			results := m.Call(nil)
-			if len(results) == 1 && results[0].Kind() == reflect.String {
-				return results[0].String()
-			}
-		}
-		return fmt.Sprintf("%v", elem)
-	default:
-		return fmt.Sprintf("%v", f)
-	}
 }
 
 // responseWriter wraps http.ResponseWriter to capture the final status code

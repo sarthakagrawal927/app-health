@@ -66,6 +66,7 @@ type Client struct {
 	cfg Config
 
 	queue chan EventV1
+	flush chan chan struct{}
 	stop  chan struct{}
 	done  chan struct{}
 
@@ -132,6 +133,7 @@ func New(cfg Config) *Client {
 	c := &Client{
 		cfg:        cfg,
 		queue:      make(chan EventV1, cfg.QueueSize),
+		flush:      make(chan chan struct{}),
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
 		httpClient: hc,
@@ -205,6 +207,23 @@ func (c *Client) loop() {
 		case <-flushTimer.C:
 			flush()
 			flushTimer.Reset(c.cfg.FlushInterval)
+		case flushed := <-c.flush:
+			// Drain everything already accepted into the queue, then deliver the
+			// partial batch before acknowledging the synchronous flush request.
+			draining := true
+			for draining {
+				select {
+				case ev := <-c.queue:
+					batch = append(batch, ev)
+					if len(batch) >= c.cfg.BatchSize {
+						flush()
+					}
+				default:
+					draining = false
+				}
+			}
+			flush()
+			close(flushed)
 		}
 	}
 }
@@ -289,24 +308,21 @@ func (c *Client) Flush(ctx context.Context) error {
 	if c.closed.Load() {
 		return errors.New("apphealth: client closed")
 	}
-	// Snapshot the queue depth at call time and wait for it to drain.
-	// We do this by enqueuing a sentinel and waiting for the loop to consume
-	// everything ahead of it via a synchronous flush trigger.
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		if len(c.queue) == 0 {
-			return nil
-		}
-		// Yield briefly to let the loop drain.
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(2 * time.Millisecond):
-		}
+	flushed := make(chan struct{})
+	select {
+	case c.flush <- flushed:
+	case <-c.done:
+		return errors.New("apphealth: client closed")
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case <-flushed:
+		return nil
+	case <-c.done:
+		return errors.New("apphealth: client closed")
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -314,31 +330,16 @@ func (c *Client) Flush(ctx context.Context) error {
 // timeout, and stops the delivery goroutine. Calling Close more than once
 // returns the first error.
 func (c *Client) Close(ctx context.Context) error {
-	var firstErr error
 	c.closeOnce.Do(func() {
 		c.closed.Store(true)
 		close(c.stop)
-		// Wait for the loop to finish draining and delivering.
-		waitDone := make(chan struct{})
-		go func() {
-			select {
-			case <-c.done:
-			case <-ctx.Done():
-			}
-			close(waitDone)
-		}()
-		<-waitDone
-		if ctx.Err() != nil {
-			firstErr = fmt.Errorf("apphealth: close timed out: %w", ctx.Err())
+		select {
+		case <-c.done:
+		case <-ctx.Done():
+			c.closeErr = fmt.Errorf("apphealth: close timed out: %w", ctx.Err())
 		}
 	})
-	if firstErr != nil {
-		return firstErr
-	}
-	if c.closed.Load() {
-		// Subsequent calls: nothing to do.
-	}
-	return nil
+	return c.closeErr
 }
 
 // Stats returns a snapshot of local diagnostic counters. Queued is the

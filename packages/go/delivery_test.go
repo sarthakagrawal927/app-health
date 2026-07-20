@@ -1,6 +1,8 @@
 package apphealth
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -118,12 +120,16 @@ func TestDelivery_CloseFlushes(t *testing.T) {
 	}
 }
 
-// 4.3: Flush waits for the queue to drain without closing the client.
+// 4.3: Flush synchronously delivers the queue and the loop's partial batch
+// without closing the client.
 func TestDelivery_FlushDrains(t *testing.T) {
 	rs := newRecordingServer()
-	// Slow server so the queue does not drain instantly.
-	rs.delay = 10 * time.Millisecond
-	c := newTestClient(t, rs, Config{QueueSize: 64, BatchSize: 4, MaxRetries: 0})
+	c := newTestClient(t, rs, Config{
+		QueueSize:     64,
+		BatchSize:     32,
+		FlushInterval: time.Hour,
+		MaxRetries:    0,
+	})
 
 	for i := 0; i < 10; i++ {
 		c.enqueue(EventV1{
@@ -131,13 +137,19 @@ func TestDelivery_FlushDrains(t *testing.T) {
 			Route: "/flush", StatusCode: 200, DurationMs: 1,
 		})
 	}
+	if !waitFor(t, time.Second, func() bool { return c.Stats().Queued == 0 }) {
+		t.Fatalf("delivery loop did not consume queued events")
+	}
+	if got := len(rs.events()); got != 0 {
+		t.Fatalf("expected events to remain in the partial batch before Flush, got %d", got)
+	}
 	ctx, cancel := contextWithTimeout(3 * time.Second)
 	defer cancel()
 	if err := c.Flush(ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	if c.Stats().Queued != 0 {
-		t.Fatalf("expected empty queue after flush, got %d", c.Stats().Queued)
+	if got := len(rs.events()); got != 10 {
+		t.Fatalf("expected Flush to deliver all 10 events, got %d", got)
 	}
 	// Client still usable after Flush.
 	if c.closed.Load() {
@@ -154,6 +166,42 @@ func TestDelivery_CloseIdempotent(t *testing.T) {
 	defer cancel()
 	_ = c.Close(ctx)
 	// Second close via cleanup must not panic or hang.
+}
+
+// Repeated Close calls return the exact first error, even after the delivery
+// goroutine subsequently finishes.
+func TestDelivery_CloseReturnsFirstError(t *testing.T) {
+	rs := newRecordingServer()
+	rs.blockCh = make(chan struct{})
+	c := newTestClient(t, rs, Config{BatchSize: 1, Timeout: time.Second})
+	c.enqueue(EventV1{
+		EventID: newEventID(), Timestamp: c.nowMs(), Method: "GET",
+		Route: "/close-error", StatusCode: 200, DurationMs: 1,
+	})
+	if !waitFor(t, time.Second, func() bool { return c.Stats().Queued == 0 }) {
+		t.Fatal("delivery loop did not consume event")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	first := c.Close(ctx)
+	if !errors.Is(first, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", first)
+	}
+	second := c.Close(context.Background())
+	if second != first {
+		t.Fatalf("expected repeated Close to return the same error: first=%v second=%v", first, second)
+	}
+
+	close(rs.blockCh)
+	select {
+	case <-c.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("delivery goroutine did not finish after server unblocked")
+	}
+	if third := c.Close(context.Background()); third != first {
+		t.Fatalf("expected first error after shutdown completed: first=%v third=%v", first, third)
+	}
 }
 
 // 4.1: the Authorization header carries the ingest key and the batch carries

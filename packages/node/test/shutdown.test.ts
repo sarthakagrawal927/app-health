@@ -38,6 +38,20 @@ describe('client flush, close, and timer shutdown', () => {
     expect(client.diagnostics().queued).toBe(0);
   });
 
+  it('close() drains events while the automatic timer is enabled', async () => {
+    const controller = createFetchController();
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+    });
+    client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    await client.close();
+    expect(controller.requests).toHaveLength(1);
+    expect(client.diagnostics().sentEvents).toBe(1);
+    expect(client.diagnostics().queued).toBe(0);
+  });
+
   it('close() is idempotent', async () => {
     const client = createAppHealthClient({
       key: 'ahk_test',
@@ -46,6 +60,35 @@ describe('client flush, close, and timer shutdown', () => {
     });
     await client.close();
     await client.close();
+  });
+
+  it('coalesces concurrent close calls until the shared flush completes', async () => {
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: async () => {
+        await blocked;
+        return new Response('{}', { status: 202 });
+      },
+      disableTimer: true,
+    });
+    client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    const first = client.close();
+    const second = client.close();
+    expect(second).toBe(first);
+    let completed = false;
+    void second.then(() => {
+      completed = true;
+    });
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    release();
+    await Promise.all([first, second]);
+    expect(client.diagnostics().sentEvents).toBe(1);
   });
 
   it('auto-flush timer fires on the configured interval', async () => {

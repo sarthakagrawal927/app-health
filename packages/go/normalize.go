@@ -17,7 +17,8 @@ var uuidSegment = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 // intact. This is deliberately conservative: it only collapses segments that
 // are almost certainly identifiers, so distinct routes are not merged.
 //
-// The route is truncated to MaxRouteLength to satisfy the V1 contract.
+// Routes longer than MaxRouteLength are dropped to avoid merging distinct
+// endpoints into the same truncated identity.
 func normalizeRouteFallback(path string) string {
 	if path == "" {
 		return "/"
@@ -36,7 +37,7 @@ func normalizeRouteFallback(path string) string {
 	}
 	out := strings.Join(segments, "/")
 	if len(out) > MaxRouteLength {
-		out = out[:MaxRouteLength]
+		return ""
 	}
 	return out
 }
@@ -96,7 +97,7 @@ func patternToRoute(pattern string) string {
 	}
 	out := b.String()
 	if len(out) > MaxRouteLength {
-		out = out[:MaxRouteLength]
+		return ""
 	}
 	return out
 }

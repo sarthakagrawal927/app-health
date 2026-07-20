@@ -10,9 +10,9 @@
 //
 //	go run . --key <your-ingest-key> --ingest http://localhost:8787/v1/ingest
 //
-// In V0 the local Worker returns 501 for /v1/ingest until Wave 1 lands
-// authenticated ingest. The SDK fails open: application responses are
-// unchanged while delivery errors are counted in the periodic stats line.
+// Point --ingest at an app-health Worker with authenticated V1 ingest enabled.
+// The SDK fails open: application responses are unchanged while delivery
+// errors are counted in the periodic stats line.
 package main
 
 import (

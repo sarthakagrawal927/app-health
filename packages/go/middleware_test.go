@@ -253,6 +253,32 @@ func TestMiddleware_ResolverEmptyFallsBackToPattern(t *testing.T) {
 	}
 }
 
+func TestMiddleware_DropsOversizedRoutes(t *testing.T) {
+	oversized := "/" + strings.Repeat("x", MaxRouteLength)
+
+	t.Run("resolver", func(t *testing.T) {
+		c := &Client{cfg: Config{RouteResolver: func(*http.Request) string { return oversized }}}
+		req := httptest.NewRequest("GET", "/fallback", nil)
+		if got := c.resolveRoute(req); got != "" {
+			t.Fatalf("expected oversized resolver route to be dropped, got %q", got)
+		}
+	})
+
+	t.Run("pattern", func(t *testing.T) {
+		if got := patternToRoute("GET " + oversized); got != "" {
+			t.Fatalf("expected oversized request pattern to be dropped, got %q", got)
+		}
+	})
+
+	t.Run("fallback", func(t *testing.T) {
+		c := &Client{}
+		req := httptest.NewRequest("GET", oversized, nil)
+		if got := c.resolveRoute(req); got != "" {
+			t.Fatalf("expected oversized fallback route to be dropped, got %q", got)
+		}
+	})
+}
+
 // 4.2: conservative fallback normalizes numeric and UUID segments when no
 // pattern or resolver is available.
 func TestMiddleware_NormalizationFallback(t *testing.T) {

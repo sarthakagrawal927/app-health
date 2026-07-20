@@ -131,15 +131,22 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
 
   const diag = createDiagnostics();
   const queue: EventV1[] = [];
-  let timer: ReturnType<typeof setInterval> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
   let flushing: Promise<void> | null = null;
+  let closing: Promise<void> | null = null;
 
-  if (!options.disableTimer && flushIntervalMs > 0) {
-    timer = setInterval(() => {
-      void flush().catch(() => {
-        /* errors are recorded in diagnostics */
-      });
+  function scheduleFlush(): void {
+    if (options.disableTimer || closed || timer !== null) return;
+    timer = setTimeout(() => {
+      timer = null;
+      void flush()
+        .catch(() => {
+          /* errors are recorded in diagnostics */
+        })
+        .finally(() => {
+          if (queue.length > 0) scheduleFlush();
+        });
     }, flushIntervalMs);
     if (typeof timer.unref === 'function') timer.unref();
   }
@@ -171,6 +178,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
     };
     queue.push(v1Event);
     diag.setQueued(queue.length);
+    scheduleFlush();
     if (queue.length >= maxBatchSize) {
       void flush().catch(() => {
         /* recorded in diagnostics */
@@ -237,14 +245,15 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
     }
   }
 
-  async function close(): Promise<void> {
-    if (closed) return;
+  function close(): Promise<void> {
+    if (closing) return closing;
     closed = true;
     if (timer) {
-      clearInterval(timer);
+      clearTimeout(timer);
       timer = null;
     }
-    await flush();
+    closing = flush();
+    return closing;
   }
 
   return {
