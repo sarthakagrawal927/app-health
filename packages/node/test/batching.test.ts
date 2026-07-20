@@ -1,0 +1,93 @@
+import { describe, expect, it } from 'vitest';
+import { createAppHealthClient } from '../src/index.js';
+import { createFetchController } from './helpers.js';
+
+describe('client batching and overflow', () => {
+  it('batches events up to maxBatchSize and sends one batch per flush', async () => {
+    const controller = createFetchController();
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+      disableTimer: true,
+      maxBatchSize: 3,
+    });
+    for (let i = 0; i < 7; i += 1) {
+      client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    }
+    await client.flush();
+    // 7 events / 3 per batch = 3 batches (3 + 3 + 1).
+    expect(controller.requests).toHaveLength(3);
+    const sizes = controller.requests.map((r) => JSON.parse(r.body).events.length);
+    expect(sizes).toEqual([3, 3, 1]);
+    const d = client.diagnostics();
+    expect(d.sentBatches).toBe(3);
+    expect(d.sentEvents).toBe(7);
+    expect(d.queued).toBe(0);
+  });
+
+  it('drops events when the queue is full and increments droppedOverflow', async () => {
+    const controller = createFetchController(500);
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+      disableTimer: true,
+      maxQueueSize: 4,
+      maxBatchSize: 2,
+      maxRetries: 0,
+    });
+    // Fill the queue beyond capacity without flushing (size threshold = 2,
+    // so record() will trigger flushes). To force overflow deterministically,
+    // block delivery with 500s and a tiny queue.
+    for (let i = 0; i < 10; i += 1) {
+      client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    }
+    await client.flush();
+    const d = client.diagnostics();
+    expect(d.droppedOverflow).toBeGreaterThan(0);
+    expect(d.failedBatches).toBeGreaterThan(0);
+  });
+
+  it('drops invalid events and increments droppedInvalid', () => {
+    const controller = createFetchController();
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+      disableTimer: true,
+    });
+    client.record({ method: 'G3T', route: '/health', status_code: 200, duration_ms: 1 });
+    client.record({ method: 'GET', route: 'no-slash', status_code: 200, duration_ms: 1 });
+    client.record({ method: 'GET', route: '/health', status_code: 99, duration_ms: 1 });
+    client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 999_999_999 });
+    expect(client.diagnostics().droppedInvalid).toBe(4);
+    expect(client.diagnostics().queued).toBe(0);
+  });
+
+  it('auto-flushes when the queue reaches maxBatchSize', async () => {
+    const controller = createFetchController();
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+      disableTimer: true,
+      maxBatchSize: 2,
+    });
+    client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    // Allow the triggered async flush to complete.
+    await new Promise((r) => setTimeout(r, 5));
+    expect(controller.requests).toHaveLength(1);
+    await client.close();
+  });
+
+  it('rejects construction with invalid key or endpoint', () => {
+    expect(() =>
+      createAppHealthClient({ key: '', endpoint: 'http://localhost/v1/ingest' }),
+    ).toThrowError(/non-empty `key`/);
+    expect(() =>
+      createAppHealthClient({ key: 'k', endpoint: 'ftp://localhost/v1/ingest' }),
+    ).toThrowError(/http\(s\) `endpoint`/);
+  });
+});
