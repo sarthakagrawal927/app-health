@@ -10,6 +10,9 @@ matched a route, `Context.Path()` is empty and the core client drops the event;
 the concrete request URL is never used. Status resolution mirrors the Echo v4
 adapter, using `echo.UnwrapResponse` and `echo.HTTPError`.
 
-The adapter is deliberately thin. Consumers remain responsible for deciding
-whether to construct a client, which environment is enabled, and when the
-process-level client is closed.
+The adapter remains thin but exposes `InstallFromEnvironment`, which attaches
+middleware and returns a safe cleanup function. Construction requires an
+explicit enabled flag, project name, matching environment, and ingest key.
+Project and environment are explicit SDK identity inputs. The ingest key remains
+authoritative for server-side app/environment attribution, so the strict event
+payload does not duplicate or trust caller-provided identity.

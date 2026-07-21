@@ -14,8 +14,8 @@ import (
 // InstallFromEnvironment installs App Health only when the explicit enabled
 // flag, required environment, and ingest key all allow it. The returned
 // cleanup function flushes pending events and is safe to defer.
-func InstallFromEnvironment(e *echo.Echo, requiredEnvironment string) func() {
-	client := apphealth.NewFromEnvironment(requiredEnvironment, "")
+func InstallFromEnvironment(e *echo.Echo, project, requiredEnvironment string) func() {
+	client := apphealth.NewFromEnvironment(project, requiredEnvironment, "")
 	if client == nil {
 		return func() {}
 	}

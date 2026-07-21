@@ -2,11 +2,21 @@
 
 ### Requirement: Environment-gated construction
 The core SDK SHALL provide a small environment constructor that returns a
-client only when the required environment matches and the ingest key exists.
+project-aware client only when App Health is explicitly enabled, the required
+environment matches, and the ingest key exists.
+
+#### Scenario: Explicit enable flag is absent
+- **WHEN** `APP_HEALTH_ENABLED` is not exactly `true`
+- **THEN** the constructor returns nil without starting a delivery goroutine
 
 #### Scenario: Non-target environment has a key
 - **WHEN** `APP_ENV` does not equal the required environment
 - **THEN** the constructor returns nil without starting a delivery goroutine
+
+#### Scenario: Project-aware client is enabled
+- **WHEN** all gates pass for project `polaris` and environment `staging`
+- **THEN** the client retains that expected identity while the ingest key remains
+  authoritative for server-side attribution
 
 ### Requirement: Echo v5 endpoint capture
 The SDK SHALL provide Echo v5 middleware that records only the matched route

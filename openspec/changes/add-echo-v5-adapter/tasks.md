@@ -8,4 +8,4 @@
 ## 2. Verification
 
 - [x] 2.1 Run Go tests, vet, and strict OpenSpec validation
-- [ ] 2.2 Commit and push the SDK change for a consumer release
+- [x] 2.2 Commit and push the SDK change for a consumer release

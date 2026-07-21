@@ -10,10 +10,11 @@ would make privacy, status handling, and lifecycle behavior drift.
 - Keep batching, retries, privacy validation, diagnostics, and shutdown in the
   shared client.
 - Add Echo v5 route/status/error/panic/privacy tests and a local example proof.
-- Leave environment gating and application-specific startup wiring to consumers.
+- Add explicit enable, project identity, environment gating, and a small
+  framework installer so consumers need only one setup call and one cleanup.
 
 ## Non-Goals
 
-- No production deployment or package publication in this change.
+- No production deployment in this change.
 - No Echo v4 API changes.
 - No request content, identity, logs, traces, or arbitrary metadata capture.
