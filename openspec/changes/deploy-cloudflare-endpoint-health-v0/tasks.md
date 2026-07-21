@@ -1,10 +1,11 @@
 ## 1. Production contract and adapters
 
-- [x] 1.1 Reconcile the D1 migration so apps, environments, key verifiers, installation state, and bounded event deduplication are durable while endpoint telemetry is excluded
+- [x] 1.1 Reconcile the D1 migration so apps, environments, key verifiers, installation state, bounded event deduplication, and normalized endpoint identity are durable while performance telemetry is excluded
 - [x] 1.2 Implement the D1 repository adapter with transactional app and environment creation, key revocation, installation updates, and expired-dedup cleanup
 - [x] 1.3 Implement injectable Analytics Engine writer and query adapters with a stable opaque app-environment index and fixed approved dimensions
 - [x] 1.4 Add a bounded request-body guard before ingest JSON parsing and aggregate valid batches to no more than 250 Analytics Engine points per invocation
 - [x] 1.5 Add sampling-aware fixed-window SQL and merge weighted histogram buckets into request count, error rate, approximate p50 and p95, and last-seen summaries
+- [x] 1.6 Retain normalized observed endpoint identities in D1 and merge them with sampled Analytics Engine summaries without presenting unavailable metrics as zero
 
 ## 2. Identity and route boundaries
 
@@ -30,3 +31,4 @@
 - [x] 4.4 Run the full TypeScript and Go checks plus strict OpenSpec validation and update PROJECT_STATUS.md with the verified production-readiness state
 - [ ] 4.5 With explicit deployment approval, provision the approved Cloudflare bindings and routes without committing secret values
 - [ ] 4.6 Run and record the production canary for app creation, one-time key handoff, Node ingest, Go ingest, connected state, endpoint summaries, and prohibited-data absence
+- [x] 4.7 Add migration, adapter, service, and UI tests proving sampled-out endpoints remain visible and prohibited event fields remain absent

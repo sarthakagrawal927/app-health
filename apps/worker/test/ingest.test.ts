@@ -301,6 +301,40 @@ describe('ingest aggregate-only storage', () => {
     expect((bucket as unknown as Record<string, unknown>).event_id).toBeUndefined();
     expect((bucket as unknown as Record<string, unknown>).status_code).toBeUndefined();
   });
+
+  it('keeps a sampled-out endpoint visible without inventing metrics', async () => {
+    const { service, adapter } = await freshService();
+    const created = await service.createApp({ name: 'sampled-app', environment: 'prod' }, NOW);
+    await service.ingest(
+      created.key.key,
+      makeBatch([
+        makeEvent({
+          event_id: uuid(31),
+          timestamp: NOW,
+          route: '/rare/:id',
+          method: 'PATCH',
+        }),
+      ]),
+      NOW,
+    );
+    adapter.asRepositories().buckets.queryBuckets = async () => [];
+
+    const response = await service.queryEndpoints(
+      created.app.id,
+      created.environment.id,
+      '15m',
+      NOW,
+    );
+    expect(response.endpoints).toEqual([
+      expect.objectContaining({
+        method: 'PATCH',
+        route: '/rare/:id',
+        last_seen: NOW,
+        health_state: 'insufficient-data',
+        metrics_available: false,
+      }),
+    ]);
+  });
 });
 
 describe('fixed latency histograms and window merging', () => {

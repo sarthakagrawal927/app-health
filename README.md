@@ -36,7 +36,6 @@ customer request paths.
 | `typescript`, `eslint`, `prettier`, `typescript-eslint`, `@eslint/js`, `eslint-config-prettier`, `rimraf` | root (dev)                                           | Shared typecheck, lint, format, and clean tooling.                                                          |
 | Go standard library                                                                                       | packages/go                                          | The Go V0 contract module uses stdlib only; no third-party Go modules.                                      |
 
-No Cloudflare resources or credentials are provisioned by this repository.
 `APP_HEALTH_MODE=local` uses the in-memory adapter. Production mode requires a
 bound D1 database, Analytics Engine dataset, read-scoped query-token secret,
 owner-authentication secret, and the approved hostnames before it will serve
@@ -139,7 +138,9 @@ high-volume indexes. Queries weight every count by `_sample_interval`, then
 derive percentiles from merged fixed latency-histogram counts, never by
 averaging bucket percentiles. Bucket bounds are listed in
 `packages/contracts/src/constants.ts` and mirrored in
-`packages/go/contracts.go`.
+`packages/go/contracts.go`. A normalized D1 inventory ensures rare endpoint
+identities remain visible even when Analytics Engine omits a sampled metric row;
+the dashboard shows those metric values as unavailable, never as false zeros.
 
 ## Privacy boundary
 
@@ -151,20 +152,20 @@ both SDKs enforce the same boundary at capture time.
 
 ## Production boundary
 
-- `health.sassmaker.com` is the private Access-protected dashboard and owner API.
+- `health.sassmaker.com` is the private owner-key-protected dashboard and owner API.
 - `ingest.sassmaker.com/v1/ingest` accepts only environment-scoped bearer keys.
-- D1 stores control-plane records and bounded event-ID deduplication; Analytics
-  Engine stores only approved aggregate endpoint dimensions and counts.
-- Direct `workers.dev` access is disabled. Missing bindings, Access settings,
-  query credentials, or hostname settings fail closed.
-- The APAC D1 control-plane resource and guarded Wrangler configuration are
-  provisioned. Access policy creation, the Analytics Engine query secret,
-  deployment, and the production Node/Go canary remain explicit release actions.
+- D1 stores control-plane records, bounded event-ID deduplication, and only the
+  normalized endpoint identity plus first/last seen; Analytics Engine stores
+  approved aggregate endpoint dimensions and counts.
+- Direct `workers.dev` access is disabled. Missing bindings, owner or query
+  credentials, or hostname settings fail closed.
+- The release uses the account's existing Workers subscription. It does not
+  activate Zero Trust or another Cloudflare subscription.
 
 ## Current boundary
 
-The endpoint-only V0 and its production Cloudflare adapters are implemented and
-locally proven. The D1 control-plane resource now exists; the Worker is not live
-until Access, the analytics query secret, guarded deployment, and canary pass.
-Alerts, traces, logs, and broader incident workflows remain explicitly out of
-scope.
+The endpoint-only V0 is live on Cloudflare with both approved hostnames, D1,
+Analytics Engine, and owner/ingest key boundaries. A real Node and Go canary
+proved creation, key handoff, ingest, and connected state; final acceptance is
+pending the additive endpoint-inventory migration and the corrected canary.
+Alerts, traces, logs, and broader incident workflows remain explicitly out of scope.

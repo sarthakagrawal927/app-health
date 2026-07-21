@@ -172,6 +172,31 @@ describe('App Health V0 UI', () => {
     });
   });
 
+  it('shows sampled-out endpoint identities without false zero metrics', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    installFetch({
+      endpointRows: [
+        {
+          method: 'POST',
+          route: '/rare',
+          request_count: 0,
+          error_count: 0,
+          error_rate: 0,
+          p50_ms: 0,
+          p95_ms: 0,
+          last_seen: Date.now(),
+          health_state: 'insufficient-data',
+          metrics_available: false,
+        },
+      ],
+    });
+    render(<App />);
+    expect(await screen.findAllByText('/rare')).toHaveLength(2);
+    expect(screen.getAllByText('metrics sampled')).toHaveLength(2);
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(4);
+    expect(screen.queryByText('0.0%')).toBeNull();
+  });
+
   it('renders the waiting and no-traffic state with a concrete next action', async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
     installFetch({
@@ -234,5 +259,12 @@ describe('sortEndpoints', () => {
     expect(sortEndpoints(endpoints, 'error_rate', 'asc')[0].route).toBe('/health');
     expect(sortEndpoints(endpoints, 'p95', 'desc')[0].p95_ms).toBe(2400);
     expect(sortEndpoints(endpoints, 'last_seen', 'desc')[0].route).toBe('/orders');
+  });
+
+  it('keeps endpoints without sampled metrics below measured endpoints', () => {
+    const sampledOut = { ...endpoints[0], route: '/rare', metrics_available: false };
+    expect(sortEndpoints([sampledOut, ...endpoints], 'requests', 'asc').at(-1)?.route).toBe(
+      '/rare',
+    );
   });
 });

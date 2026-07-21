@@ -81,6 +81,9 @@ export function sortEndpoints(
   return endpoints
     .map((endpoint, index) => ({ endpoint, index }))
     .sort((a, b) => {
+      if (key !== 'last_seen' && a.endpoint.metrics_available !== b.endpoint.metrics_available) {
+        return a.endpoint.metrics_available === false ? 1 : -1;
+      }
       const av =
         key === 'health'
           ? healthWeight[a.endpoint.health_state]
@@ -402,6 +405,7 @@ function StatusBanner({ status }: { status: InstallationStatusV1 }): JSX.Element
 }
 
 function EndpointTableRow({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Element {
+  const hasMetrics = endpoint.metrics_available !== false;
   return (
     <tr>
       <td>
@@ -410,17 +414,17 @@ function EndpointTableRow({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.
       <td>
         <code className="route">{endpoint.route}</code>
       </td>
-      <td>{endpoint.request_count.toLocaleString()}</td>
-      <td className={endpoint.error_rate >= 0.01 ? 'metric-warn' : ''}>
-        {(endpoint.error_rate * 100).toFixed(1)}%
+      <td>{hasMetrics ? endpoint.request_count.toLocaleString() : '—'}</td>
+      <td className={hasMetrics && endpoint.error_rate >= 0.01 ? 'metric-warn' : ''}>
+        {hasMetrics ? `${(endpoint.error_rate * 100).toFixed(1)}%` : '—'}
       </td>
-      <td>{endpoint.p50_ms} ms</td>
-      <td>{endpoint.p95_ms} ms</td>
+      <td>{hasMetrics ? `${endpoint.p50_ms} ms` : '—'}</td>
+      <td>{hasMetrics ? `${endpoint.p95_ms} ms` : '—'}</td>
       <td>{formatAge(endpoint.last_seen)}</td>
       <td>
         <span className={`health health-${endpoint.health_state}`}>
           <i />
-          {endpoint.health_state.replace('-', ' ')}
+          {hasMetrics ? endpoint.health_state.replace('-', ' ') : 'metrics sampled'}
         </span>
       </td>
     </tr>
@@ -428,6 +432,7 @@ function EndpointTableRow({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.
 }
 
 function EndpointCard({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Element {
+  const hasMetrics = endpoint.metrics_available !== false;
   return (
     <article className="endpoint-card">
       <div className="endpoint-card-head">
@@ -437,25 +442,25 @@ function EndpointCard({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Elem
         </div>
         <span className={`health health-${endpoint.health_state}`}>
           <i />
-          {endpoint.health_state.replace('-', ' ')}
+          {hasMetrics ? endpoint.health_state.replace('-', ' ') : 'metrics sampled'}
         </span>
       </div>
       <dl>
         <div>
           <dt>Requests</dt>
-          <dd>{endpoint.request_count.toLocaleString()}</dd>
+          <dd>{hasMetrics ? endpoint.request_count.toLocaleString() : '—'}</dd>
         </div>
         <div>
           <dt>Error rate</dt>
-          <dd>{(endpoint.error_rate * 100).toFixed(1)}%</dd>
+          <dd>{hasMetrics ? `${(endpoint.error_rate * 100).toFixed(1)}%` : '—'}</dd>
         </div>
         <div>
           <dt>p50</dt>
-          <dd>{endpoint.p50_ms} ms</dd>
+          <dd>{hasMetrics ? `${endpoint.p50_ms} ms` : '—'}</dd>
         </div>
         <div>
           <dt>p95</dt>
-          <dd>{endpoint.p95_ms} ms</dd>
+          <dd>{hasMetrics ? `${endpoint.p95_ms} ms` : '—'}</dd>
         </div>
       </dl>
       <p>Last seen {formatAge(endpoint.last_seen)}</p>

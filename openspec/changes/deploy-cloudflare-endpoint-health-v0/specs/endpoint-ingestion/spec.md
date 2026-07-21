@@ -22,12 +22,14 @@ a retry does not increase Analytics Engine metrics twice.
 The system SHALL aggregate equivalent validated events in memory and write only
 method, normalized route, fixed latency bucket, runtime, optional release,
 request count, error count, duration sum, and maximum event timestamp to
-Workers Analytics Engine. It SHALL NOT durably store raw request events or
-endpoint telemetry in D1.
+Workers Analytics Engine. D1 SHALL retain only a deduplicated observed-endpoint
+identity consisting of app, environment, method, normalized route, first seen,
+and last seen. It SHALL NOT durably store raw request events, status, duration,
+histograms, request content, concrete paths, headers, query values, or identity.
 
 #### Scenario: Valid event is processed
 - **WHEN** an endpoint summary passes authentication, validation, and deduplication
-- **THEN** an aggregate-safe Analytics Engine point is written and D1 stores no route, status, duration, histogram, or request content
+- **THEN** an aggregate-safe Analytics Engine point is written and D1 upserts only the normalized endpoint identity and first/last seen timestamps
 
 ### Requirement: Correct window merging
 The query layer SHALL use fixed allowlisted Analytics Engine SQL, weight sampled

@@ -1,18 +1,24 @@
 ## MODIFIED Requirements
 
 ### Requirement: Observed endpoint inventory
-The private dashboard SHALL list every method and normalized route observed by
-Analytics Engine for the selected durable app and environment and SHALL
-describe the list as observed traffic rather than source-code route inventory.
+The private dashboard SHALL list every method and normalized route accepted for
+the selected durable app and environment by merging the durable normalized
+inventory with Analytics Engine metrics. It SHALL describe the list as observed
+traffic rather than source-code route inventory.
 
 #### Scenario: Multiple endpoints send traffic
 - **WHEN** accepted telemetry contains three distinct method and normalized-route pairs
 - **THEN** the selected environment displays three endpoint rows
 
+#### Scenario: Analytics Engine samples out a rare endpoint
+- **WHEN** the D1 inventory contains an accepted endpoint whose metric row is absent from the selected Analytics Engine response
+- **THEN** the endpoint remains visible with its last-seen time and an explicit metrics-sampled state instead of false zero metrics
+
 ### Requirement: Endpoint performance metrics
 Each endpoint row SHALL show sampling-aware request count, error rate,
 approximate p50 latency, approximate p95 latency, last seen, and deterministic
-health state for the selected time window.
+health state for the selected time window when metrics are available. Missing
+sampled metrics SHALL be rendered as unavailable rather than zero.
 
 #### Scenario: Operator changes time window
 - **WHEN** the operator switches from 15 minutes to 24 hours

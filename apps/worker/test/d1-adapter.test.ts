@@ -146,4 +146,27 @@ describe('D1 control plane', () => {
     expect(db.statements[2].values).toEqual(['app-1', 'env-1', 'event-1']);
     expect(db.statements[3].values).toEqual([50, 1000]);
   });
+
+  it('stores only a deduplicated normalized endpoint inventory', async () => {
+    const db = new Database();
+    const control = new D1ControlPlane(db);
+    await control.recordObserved('app-1', 'env-1', [
+      { method: 'GET', route: '/users/:id', timestamp: 100 },
+      { method: 'GET', route: '/users/:id', timestamp: 200 },
+      { method: 'POST', route: '/orders', timestamp: 150 },
+    ]);
+
+    expect(db.statements).toHaveLength(2);
+    expect(db.statements[0].sql).toContain('INSERT INTO observed_endpoints');
+    expect(db.statements[0].values).toEqual(['app-1', 'env-1', 'GET', '/users/:id', 100, 200]);
+    expect(JSON.stringify(db.statements.map(({ sql, values }) => ({ sql, values })))).not.toMatch(
+      /status_code|duration_ms|payload|headers/,
+    );
+
+    db.allResults.push([{ method: 'GET', route: '/users/:id', first_seen: 100, last_seen: 200 }]);
+    await expect(control.listObserved('app-1', 'env-1')).resolves.toEqual([
+      { method: 'GET', route: '/users/:id', first_seen: 100, last_seen: 200 },
+    ]);
+    expect(db.statements.at(-1)?.values).toEqual(['app-1', 'env-1']);
+  });
 });

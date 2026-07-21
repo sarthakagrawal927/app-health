@@ -70,6 +70,23 @@ export interface DedupeRepository {
   cleanupExpired(before: number, limit: number): Promise<number>;
 }
 
+export interface ObservedEndpoint {
+  method: string;
+  route: string;
+  first_seen: number;
+  last_seen: number;
+}
+
+/** Durable normalized endpoint identities; never raw requests or payloads. */
+export interface EndpointInventoryRepository {
+  recordObserved(
+    appId: string,
+    envId: string,
+    endpoints: readonly { method: string; route: string; timestamp: number }[],
+  ): Promise<void>;
+  listObserved(appId: string, envId: string): Promise<ObservedEndpoint[]>;
+}
+
 /**
  * One-minute endpoint aggregate buckets. Ingest upserts; query reads a window
  * range and merges buckets in memory.
@@ -119,6 +136,7 @@ export interface AppHealthRepositories {
   keys: KeyRepository;
   installation: InstallationRepository;
   dedupe: DedupeRepository;
+  inventory?: EndpointInventoryRepository;
   buckets: BucketRepository;
   setup?: SetupRepository;
 }

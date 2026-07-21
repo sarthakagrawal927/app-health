@@ -129,6 +129,11 @@ export class AppHealthService {
       accepted += 1;
     }
     try {
+      await this.repos.inventory?.recordObserved(
+        keyRecord.app_id,
+        keyRecord.environment_id,
+        acceptedEvents,
+      );
       if (this.repos.buckets.upsertEvents) {
         await this.repos.buckets.upsertEvents(
           keyRecord.app_id,
@@ -203,10 +208,29 @@ export class AppHealthService {
         }
       }
     }
+    const endpoints = mergeBuckets(buckets, window, now);
+    const measured = new Set(
+      endpoints.map((endpoint) => `${endpoint.method}\u0000${endpoint.route}`),
+    );
+    for (const observed of (await this.repos.inventory?.listObserved(appId, envId)) ?? []) {
+      if (measured.has(`${observed.method}\u0000${observed.route}`)) continue;
+      endpoints.push({
+        method: observed.method,
+        route: observed.route,
+        request_count: 0,
+        error_count: 0,
+        error_rate: 0,
+        p50_ms: 0,
+        p95_ms: 0,
+        last_seen: observed.last_seen,
+        health_state: 'insufficient-data',
+        metrics_available: false,
+      });
+    }
     return {
       refreshed_at: now,
       window,
-      endpoints: mergeBuckets(buckets, window, now),
+      endpoints,
     };
   }
 }

@@ -32,6 +32,7 @@ import type {
   AppRepository,
   BucketRepository,
   DedupeRepository,
+  EndpointInventoryRepository,
   EnvironmentRepository,
   InstallationRepository,
   KeyRepository,
@@ -88,6 +89,7 @@ export class InMemoryAdapter
     KeyRepository,
     InstallationRepository,
     DedupeRepository,
+    EndpointInventoryRepository,
     BucketRepository
 {
   private readonly apps = new Map<string, AppV1>();
@@ -96,6 +98,10 @@ export class InMemoryAdapter
   private readonly keysByVerifier = new Map<string, KeyRecordV1>();
   private readonly installation = new Map<string, InstallationRow>();
   private readonly seenEvents = new Map<string, number>();
+  private readonly observedEndpoints = new Map<
+    string,
+    { method: string; route: string; first_seen: number; last_seen: number }
+  >();
   private readonly buckets = new Map<string, BucketV1>();
 
   private constructor() {}
@@ -114,6 +120,7 @@ export class InMemoryAdapter
       keys: this,
       installation: this,
       dedupe: this,
+      inventory: this,
       buckets: this,
     };
   }
@@ -344,6 +351,35 @@ export class InMemoryAdapter
       }
     }
     return removed;
+  }
+
+  async recordObserved(
+    appId: string,
+    envId: string,
+    endpoints: readonly { method: string; route: string; timestamp: number }[],
+  ): Promise<void> {
+    for (const endpoint of endpoints) {
+      const key = `${appId}|${envId}|${endpoint.method}|${endpoint.route}`;
+      const existing = this.observedEndpoints.get(key);
+      if (existing) {
+        existing.first_seen = Math.min(existing.first_seen, endpoint.timestamp);
+        existing.last_seen = Math.max(existing.last_seen, endpoint.timestamp);
+      } else {
+        this.observedEndpoints.set(key, {
+          method: endpoint.method,
+          route: endpoint.route,
+          first_seen: endpoint.timestamp,
+          last_seen: endpoint.timestamp,
+        });
+      }
+    }
+  }
+
+  async listObserved(appId: string, envId: string) {
+    const prefix = `${appId}|${envId}|`;
+    return [...this.observedEndpoints.entries()]
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([, endpoint]) => ({ ...endpoint }));
   }
 
   async upsertEvents(

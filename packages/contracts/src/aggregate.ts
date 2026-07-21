@@ -42,6 +42,8 @@ export const EndpointAggregateV1 = z.object({
   p95_ms: z.number().min(0),
   last_seen: z.number().int().min(0).nullable(),
   health_state: z.enum(HEALTH_STATES) as z.ZodEnum<[HealthState, ...HealthState[]]>,
+  /** False when the endpoint inventory survived but WAE sampled out its metrics. */
+  metrics_available: z.boolean().optional(),
 });
 
 export type EndpointAggregateV1 = z.infer<typeof EndpointAggregateV1>;

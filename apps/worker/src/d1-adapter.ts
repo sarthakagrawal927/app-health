@@ -11,6 +11,7 @@ import type {
   AppRepository,
   BucketRepository,
   DedupeRepository,
+  EndpointInventoryRepository,
   EnvironmentRepository,
   InstallationRepository,
   KeyRepository,
@@ -47,6 +48,7 @@ export class D1ControlPlane
     KeyRepository,
     InstallationRepository,
     DedupeRepository,
+    EndpointInventoryRepository,
     SetupRepository
 {
   constructor(private readonly db: D1DatabaseLike) {}
@@ -58,6 +60,7 @@ export class D1ControlPlane
       keys: this,
       installation: this,
       dedupe: this,
+      inventory: this,
       buckets,
       setup: this,
     };
@@ -284,5 +287,54 @@ export class D1ControlPlane
       .bind(before, limit)
       .run();
     return result.meta.changes ?? 0;
+  }
+
+  async recordObserved(
+    appId: string,
+    envId: string,
+    endpoints: readonly { method: string; route: string; timestamp: number }[],
+  ): Promise<void> {
+    const unique = new Map<
+      string,
+      { method: string; route: string; first: number; last: number }
+    >();
+    for (const endpoint of endpoints) {
+      const key = `${endpoint.method}\u0000${endpoint.route}`;
+      const current = unique.get(key);
+      if (current) {
+        current.first = Math.min(current.first, endpoint.timestamp);
+        current.last = Math.max(current.last, endpoint.timestamp);
+      } else {
+        unique.set(key, {
+          method: endpoint.method,
+          route: endpoint.route,
+          first: endpoint.timestamp,
+          last: endpoint.timestamp,
+        });
+      }
+    }
+    if (unique.size === 0) return;
+    const results = await this.db.batch(
+      [...unique.values()].map((endpoint) =>
+        this.db
+          .prepare(
+            'INSERT INTO observed_endpoints (app_id, environment_id, method, route, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(app_id, environment_id, method, route) DO UPDATE SET first_seen = MIN(observed_endpoints.first_seen, excluded.first_seen), last_seen = MAX(observed_endpoints.last_seen, excluded.last_seen)',
+          )
+          .bind(appId, envId, endpoint.method, endpoint.route, endpoint.first, endpoint.last),
+      ),
+    );
+    if (results.some((result) => !result.success))
+      throw new Error('D1 endpoint inventory update failed');
+  }
+
+  async listObserved(appId: string, envId: string) {
+    return (
+      await this.db
+        .prepare(
+          'SELECT method, route, first_seen, last_seen FROM observed_endpoints WHERE app_id = ? AND environment_id = ? ORDER BY method, route',
+        )
+        .bind(appId, envId)
+        .all<{ method: string; route: string; first_seen: number; last_seen: number }>()
+    ).results;
   }
 }

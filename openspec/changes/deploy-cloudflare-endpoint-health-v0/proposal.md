@@ -11,12 +11,14 @@ observability platform.
 
 - Add a production Cloudflare Worker that serves the private operator UI and
   owner APIs while leaving only the ingest endpoint non-interactive.
-- Store apps, environments, and SHA-256 key verifiers in D1; raw ingest keys are
-  displayed once and never persisted.
+- Store apps, environments, SHA-256 key verifiers, and a normalized observed-
+  endpoint inventory in D1; raw ingest keys are displayed once and never
+  persisted.
 - Write aggregate-safe endpoint telemetry to Workers Analytics Engine instead
   of building a custom metrics database.
 - Query 15-minute, 1-hour, and 24-hour endpoint summaries through fixed,
-  sampling-aware Analytics Engine SQL.
+  sampling-aware Analytics Engine SQL while retaining every observed endpoint
+  identity when Analytics Engine samples out a low-volume metric row.
 - Validate a dedicated single-owner bearer secret for every owner API while
   preserving separate scoped bearer-key authentication for `/v1/ingest`.
 - Serve the dashboard shell publicly but keep all owner data and mutations
@@ -40,8 +42,8 @@ observability platform.
 
 - `project-key-setup`: Production owner identity, durable app/environment
   creation, one-time raw-key handoff, and existing-app selection.
-- `endpoint-ingestion`: Production D1-backed key verification and
-  aggregate-safe Analytics Engine writes.
+- `endpoint-ingestion`: Production D1-backed key verification and normalized
+  endpoint inventory plus aggregate-safe Analytics Engine writes.
 - `endpoint-dashboard`: Sampling-aware production queries and connected-state
   behavior backed by Analytics Engine.
 

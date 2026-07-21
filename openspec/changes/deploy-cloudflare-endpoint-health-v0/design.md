@@ -24,7 +24,8 @@ approximate.
   the raw ingest key exactly once.
 - Let Node and Go SDKs post aggregate-safe endpoint events with only that key.
 - Make first valid traffic visible within 30 seconds.
-- Keep durable control-plane state in D1 and telemetry in Analytics Engine.
+- Keep durable control-plane state and normalized endpoint identities in D1,
+  with sampled performance telemetry in Analytics Engine.
 - Preserve local credential-free development and the existing privacy tests.
 - Fail closed when the owner secret, D1, analytics bindings, or query
   credentials are absent in production.
@@ -41,12 +42,15 @@ approximate.
 
 ## Decisions
 
-### D1 owns only the control plane
+### D1 owns the control plane and normalized endpoint inventory
 
 D1 stores apps, environments, SHA-256 ingest-key verifiers, revocation state,
 installation first/last seen timestamps, runtime, and bounded event-ID
-deduplication. It does not store method, route, status, duration, histograms, or
-other endpoint telemetry.
+deduplication. It also upserts one row per observed method and normalized route
+with only first-seen and last-seen timestamps. This small inventory is required
+because Analytics Engine sampling does not guarantee retention of rare blob
+dimension values. D1 does not store status, duration, histograms, request
+content, concrete paths, headers, query values, identity, logs, or traces.
 
 The pre-production migration is reconciled before first deploy by removing the
 unused endpoint bucket table. If any remote database has already received the
@@ -70,8 +74,11 @@ invocation and rejects oversized/invalid batches before any durable write.
 Queries use a static dataset name, an allowlisted window, and the resolved
 app/environment index. SQL groups approved dimensions and multiplies counts and
 sums by `_sample_interval`. The Worker merges returned histogram buckets to
-derive approximate p50/p95 and deterministic health states. User input never
-becomes a SQL identifier.
+derive approximate p50/p95 and deterministic health states. It then merges the
+result with the D1 endpoint inventory. If Analytics Engine sampled out a rare
+endpoint, the identity and last-seen time remain visible while metric fields are
+explicitly unavailable; the API and UI never represent missing metrics as real
+zeros. User input never becomes a SQL identifier.
 
 ### A dedicated owner secret protects owner APIs; ingest remains key-authenticated
 
@@ -101,13 +108,14 @@ snippet uses a configured ingest origin rather than `window.location.origin`.
 
 `APP_HEALTH_MODE=local` continues to use the in-memory adapter and local owner.
 Production bindings are selected only outside local mode. Unit and end-to-end
-tests inject D1, Analytics Engine, JWT, and SQL clients without credentials.
+tests inject D1, Analytics Engine, owner identity, and SQL clients without credentials.
 
 ## Risks / Trade-offs
 
 - **Analytics Engine is approximate and sampled** → Weight every query by
-  `_sample_interval`, preserve fixed histogram buckets, and label percentile
-  output approximate.
+  `_sample_interval`, preserve fixed histogram buckets, label percentile output
+  approximate, and retain the normalized endpoint inventory in D1 so rare
+  routes cannot disappear.
 - **Analytics Engine query API needs a read token** → Store it only as a Worker
   secret, use the narrow Account Analytics Read permission, and fail closed
   when absent.
@@ -127,11 +135,12 @@ tests inject D1, Analytics Engine, JWT, and SQL clients without credentials.
 ## Migration Plan
 
 1. Land and verify the D1 adapter, Analytics Engine writer/query builder,
-   Access validator, assets routing, and local compatibility without creating
+   owner-secret validator, assets routing, and local compatibility without creating
    remote resources.
 2. Run Wrangler configuration validation and local D1 migrations.
-3. With explicit production approval, create/bind D1, configure Analytics
-   Engine, add the read-scoped query and owner secrets, and configure routing.
+3. With explicit production approval, create/bind D1, apply the additive
+   normalized-inventory migration, configure Analytics Engine, add the
+   read-scoped query and owner secrets, and configure routing.
 4. Deploy to the chosen hostname with `workers.dev` protected or disabled.
 5. Run the production canary: create app → copy key → send Node and Go traffic
    → observe connected state and endpoint aggregates.

@@ -9,6 +9,15 @@ query configuration is unavailable.
 - **WHEN** a production request requires a missing D1, Analytics Engine, or query binding
 - **THEN** the Worker returns a bounded service-unavailable response and performs no partial write
 
+### Requirement: Rare endpoint identities survive metric sampling
+The production runtime SHALL durably retain only normalized endpoint identity
+and first/last seen metadata in D1 so Analytics Engine sampling cannot remove an
+accepted endpoint from the operator inventory.
+
+#### Scenario: A low-volume route is absent from Analytics Engine query rows
+- **WHEN** the Worker queries a window after accepting that normalized route
+- **THEN** the endpoint query still returns the route with metrics explicitly marked unavailable
+
 ### Requirement: Owner APIs require the dedicated owner secret
 Every non-ingest owner API SHALL validate a dedicated high-entropy bearer secret
 using timing-safe comparison. The dashboard SHALL keep the entered secret only
