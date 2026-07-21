@@ -24,7 +24,7 @@ import (
 	"os"
 	"time"
 
-	apphealth "github.com/app-health/go"
+	apphealth "github.com/sarthakagrawal927/app-health/packages/go"
 )
 
 func main() {

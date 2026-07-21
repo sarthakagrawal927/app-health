@@ -157,6 +157,24 @@ describe('App Health V0 UI', () => {
     expect(screen.queryByText('ahk_one_time_secret')).toBeNull();
   });
 
+  it('shows copy-ready Express and Echo package paths without persisting the key', async () => {
+    installFetch();
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Application name'), {
+      target: { value: 'orders-api' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create project/i }));
+
+    expect(await screen.findByText(/npm install @saas-maker\/app-health/)).toBeTruthy();
+    expect(screen.getByText(/@saas-maker\/app-health\/express/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Go + Echo' }));
+    expect(
+      screen.getByText(/go get github\.com\/sarthakagrawal927\/app-health\/packages\/go@v0\.1\.0/),
+    ).toBeTruthy();
+    expect(screen.getByText(/apphealthecho\.Middleware/)).toBeTruthy();
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain('ahk_one_time_secret');
+  });
+
   it('renders populated endpoint metrics and changes windows', async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
     const fetchMock = installFetch();

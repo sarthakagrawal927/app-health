@@ -14,7 +14,7 @@ import {
   MAX_STATUS_CODE,
   MAX_DURATION_MS,
   MIN_STATUS_CODE,
-} from '@app-health/contracts';
+} from './contracts.js';
 
 /** Uppercase, trim, and bound an HTTP method. Returns null if not normalizable. */
 export function normalizeMethod(method: unknown): string | null {

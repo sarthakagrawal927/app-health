@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { createAppHealthClient, expressMiddleware } from '../src/index.js';
+import { createAppHealthClient } from '../src/index.js';
+import { expressMiddleware } from '../src/express.js';
 import { createFetchController } from './helpers.js';
 
 // Prove that serialized batches never contain headers, cookies, query values,

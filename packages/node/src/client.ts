@@ -1,4 +1,4 @@
-// @app-health/node client: bounded async batching, short timeouts, bounded
+// @saas-maker/app-health client: bounded async batching, short timeouts, bounded
 // retries, queue-pressure drops, graceful flush/close, and local diagnostics.
 //
 // The client never blocks the application response path. `record()` is
@@ -6,7 +6,7 @@
 // a timer or size threshold and during `flush()`/`close()`. The application
 // response never awaits ingest.
 
-import { MAX_BATCH_EVENTS, SCHEMA_VERSION, type EventV1 } from '@app-health/contracts';
+import { MAX_BATCH_EVENTS, SCHEMA_VERSION, type EventV1 } from './contracts.js';
 import {
   createDiagnostics,
   type AppHealthDiagnostics,
@@ -86,11 +86,11 @@ const DEFAULTS = {
 
 export function createAppHealthClient(options: AppHealthClientOptions): AppHealthClient {
   if (typeof options?.key !== 'string' || options.key.length === 0) {
-    throw new Error('@app-health/node: createAppHealthClient requires a non-empty `key`');
+    throw new Error('@saas-maker/app-health: createAppHealthClient requires a non-empty `key`');
   }
   const endpoint = parseEndpoint(options?.endpoint);
   if (endpoint === null) {
-    throw new Error('@app-health/node: createAppHealthClient requires an http(s) `endpoint`');
+    throw new Error('@saas-maker/app-health: createAppHealthClient requires an http(s) `endpoint`');
   }
   const endpointUrl = endpoint;
   const maxQueueSize = boundedInteger(
@@ -278,7 +278,7 @@ function parseEndpoint(value: unknown): string | null {
 
 function boundedInteger(name: string, value: number, min: number, max: number): number {
   if (!Number.isInteger(value) || value < min || value > max) {
-    throw new Error(`@app-health/node: ${name} must be an integer between ${min} and ${max}`);
+    throw new Error(`@saas-maker/app-health: ${name} must be an integer between ${min} and ${max}`);
   }
   return value;
 }

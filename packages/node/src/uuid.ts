@@ -17,5 +17,7 @@ export function randomUUID(): string {
       .slice(6, 8)
       .join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
   }
-  throw new Error('@app-health/node: no Web Crypto implementation available to generate UUIDs');
+  throw new Error(
+    '@saas-maker/app-health: no Web Crypto implementation available to generate UUIDs',
+  );
 }

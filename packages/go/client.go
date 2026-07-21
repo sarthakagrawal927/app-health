@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -96,6 +97,17 @@ type Stats struct {
 	BatchesSent int64
 }
 
+// RecordInput is the framework-neutral endpoint summary accepted by Record.
+// Route must be a framework route template such as "/users/:id", never a
+// concrete URL. Query strings and fragments are rejected to protect privacy.
+type RecordInput struct {
+	Method     string
+	Route      string
+	StatusCode int
+	Duration   time.Duration
+	Timestamp  time.Time
+}
+
 // New creates and starts a Client. The background delivery goroutine begins
 // flushing immediately. Use Close to flush pending telemetry and stop the
 // goroutine.
@@ -156,6 +168,44 @@ func (c *Client) enqueue(ev EventV1) {
 	default:
 		c.dropped.Add(1)
 	}
+}
+
+// Record validates and queues one endpoint summary without blocking the
+// request path. Invalid input and events received after Close are dropped and
+// reflected in Stats. Record never reads or accepts headers, query values,
+// route parameters, bodies, cookies, or identity.
+func (c *Client) Record(input RecordInput) {
+	method := strings.ToUpper(strings.TrimSpace(input.Method))
+	route := strings.TrimSpace(input.Route)
+	if !isHTTPMethod(method) || route == "" || !strings.HasPrefix(route, "/") ||
+		len(route) > MaxRouteLength || strings.ContainsAny(route, "?#") ||
+		input.StatusCode < MinStatusCode || input.StatusCode > MaxStatusCode ||
+		input.Duration < 0 {
+		c.dropped.Add(1)
+		return
+	}
+
+	durationMs := int(input.Duration.Milliseconds())
+	if durationMs > MaxDurationMs {
+		durationMs = MaxDurationMs
+	}
+	timestamp := input.Timestamp
+	if timestamp.IsZero() {
+		timestamp = c.now()
+	}
+
+	event := EventV1{
+		EventID:    newEventID(),
+		Timestamp:  timestamp.UnixMilli(),
+		Method:     method,
+		Route:      route,
+		StatusCode: input.StatusCode,
+		DurationMs: durationMs,
+	}
+	if release := c.cfg.Release; release != "" {
+		event.Release = &release
+	}
+	c.enqueue(event)
 }
 
 // loop is the single delivery goroutine. It batches events by size or time and

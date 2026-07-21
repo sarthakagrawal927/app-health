@@ -8,7 +8,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 
 **Users:** A developer or operator who wants immediate endpoint health after installing one small SDK.
 
-**IN scope:** App/environment creation, one ingest key, Express and Go `net/http` middleware, asynchronous endpoint summaries, aggregate-only storage, and a 15-minute/1-hour/24-hour observed-endpoint performance table.
+**IN scope:** App/environment creation, one ingest key, Express, Echo, and Go `net/http` middleware, asynchronous endpoint summaries, aggregate-only storage, and a 15-minute/1-hour/24-hour observed-endpoint performance table.
 
 **OUT of scope:** Unobserved source-route discovery, Problems/incidents, raw logs, request or response content, user identity, traces, AI, alerts, deployment recovery, GitHub installation, teams/roles, and billing.
 
@@ -17,7 +17,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 ### External
 
 - Cloudflare Worker, D1 control-plane plus normalized endpoint inventory, Workers Analytics Engine telemetry, and a dedicated single-owner Worker secret are the production architecture. The Worker, APAC D1 resource, secrets, both custom hostnames, and corrected Node/Go canary are live on the existing Workers subscription. No additional Cloudflare subscription is approved.
-- Node 20+ with Express and Go 1.22+ with `net/http` are the supported V0 runtime surfaces.
+- Node 20+ with Express and Go 1.22+ with Echo or `net/http` are the supported V0 runtime surfaces.
 
 ### Internal
 
@@ -38,6 +38,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-21 — deployed the Worker, D1 schema, owner/query secrets, and `health.sassmaker.com` plus `ingest.sassmaker.com`; Node and Go canaries connected successfully and exposed an Analytics Engine sampling edge where rare endpoint identities could disappear
 - 2026-07-21 — added a privacy-bounded normalized D1 endpoint inventory and explicit sampled-metrics UI so every accepted endpoint remains visible without inventing zero values
 - 2026-07-21 — applied the additive production migration and deployed Worker version `81eae678-6774-4229-9136-064e7ff3ecb5`; the corrected canary sent three Node and four Go events with no delivery failures, reached connected state, and returned all five observed routes
+- 2026-07-21 — made the Node SDK release-ready as `@saas-maker/app-health` with ESM/CommonJS/types and external tarball proofs; added the Go 1.22-compatible Echo adapter, public framework record API, private-module install path, and route/error/panic/privacy/outage integration coverage
 
 ## Products
 
@@ -48,9 +49,9 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 
 - **Development foundation:** pnpm TypeScript workspace plus Go 1.22 module, versioned runtime-validated endpoint contracts, equivalent Node/Go fixtures, local seeded Worker adapter, and green TypeScript/Go CI.
 - **Cloudflare production implementation:** D1 owns apps/environments/hashed keys/install state/bounded dedupe and only normalized endpoint identity plus first/last seen; Workers Analytics Engine owns sampled performance telemetry; a timing-safe owner Worker secret protects owner APIs; the dashboard retains that secret only in page memory; `workers.dev` is disabled; `health.sassmaker.com` and `ingest.sassmaker.com` are live boundaries.
-- **Node SDK:** optional Express middleware and bounded fail-open delivery with privacy, outage, retry, overflow, shutdown, and benchmark coverage.
-- **Go SDK:** `net/http` middleware and bounded fail-open delivery with route-pattern/resolver support, response-behavior coverage, privacy/outage/retry/overflow/close tests, and benchmark coverage.
-- **Operator dashboard:** local app/key setup, one-time key handoff, Node/Go snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
+- **Node SDK:** publishable `@saas-maker/app-health` core plus `/express` adapter and bounded fail-open delivery with privacy, outage, retry, overflow, shutdown, package-consumer, and benchmark coverage.
+- **Go SDK:** real private GitHub module with `net/http` and `/echo` middleware, a bounded adapter record API, route-pattern/resolver support, response/error/panic preservation, privacy/outage/retry/overflow/close tests, and benchmark coverage.
+- **Operator dashboard:** local app/key setup, one-time key handoff, verified Express/Echo snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
 - **End-to-end local proof:** the Express and Go examples each sent `/health`, `/users/:id`, and `/orders` through the same local ingest and query APIs used by the dashboard; both runtimes reached connected state and the aggregates updated.
 
 ## Todo / Planned / Deferred / Blocked

@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "tsx server.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "typecheck": "pnpm --filter @saas-maker/app-health build && tsc --noEmit",
+    "build": "pnpm run typecheck"
   },
   "dependencies": {
-    "@app-health/node": "workspace:*",
+    "@saas-maker/app-health": "workspace:*",
     "express": "^4.19.2"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-// Runnable Express example for @app-health/node.
+// Runnable Express example for @saas-maker/app-health.
 //
 // Usage:
 //   pnpm --filter @app-health/example-node start
@@ -19,7 +19,8 @@
 // values, route parameter values, bodies, identity, logs, stacks, or spans.
 
 import express from 'express';
-import { createAppHealthClient, expressMiddleware } from '@app-health/node';
+import { createAppHealthClient } from '@saas-maker/app-health';
+import { expressMiddleware } from '@saas-maker/app-health/express';
 
 const KEY = process.env.APP_HEALTH_KEY;
 const ENDPOINT = process.env.APP_HEALTH_ENDPOINT ?? 'http://localhost:8787/v1/ingest';

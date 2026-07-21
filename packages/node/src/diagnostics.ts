@@ -1,4 +1,4 @@
-// Local diagnostic counters for the @app-health/node client.
+// Local diagnostic counters for the @saas-maker/app-health client.
 // These are intended for operator inspection (logging, /debug endpoints) and
 // tests. They are never sent to ingest and never carry request content.
 

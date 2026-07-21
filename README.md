@@ -1,7 +1,7 @@
 # app-health
 
 App Health V0 gives a Go or Node application an ingest key and shows how every
-observed endpoint is performing. It includes Express and `net/http` SDKs,
+observed endpoint is performing. It includes Express, Echo, and `net/http` SDKs,
 aggregate-only ingest, and a responsive operator dashboard. Local development
 is credential-free; the production path targets Cloudflare D1 and Workers
 Analytics Engine with a dedicated single-owner Worker secret.
@@ -15,8 +15,8 @@ apps/
 packages/
   contracts/  V1 event, aggregate, app/key, installation-status, query
               contracts with zod runtime validation and canonical fixtures
-  node/       @app-health/node client and optional Express middleware
-  go/         Go 1.22 client and net/http middleware (stdlib only)
+  node/       @saas-maker/app-health client and Express adapter
+  go/         Go 1.22 client with net/http and Echo adapters
 openspec/changes/build-endpoint-health-v0/   Active V0 OpenSpec change
 ```
 
@@ -34,7 +34,9 @@ customer request paths.
 | `vitest`                                                                                                  | packages/contracts, packages/node, apps/worker (dev) | Contract and worker unit tests.                                                                             |
 | `@cloudflare/workers-types`                                                                               | apps/worker (dev)                                    | Type definitions for the Worker `fetch` handler. No runtime dependency.                                     |
 | `typescript`, `eslint`, `prettier`, `typescript-eslint`, `@eslint/js`, `eslint-config-prettier`, `rimraf` | root (dev)                                           | Shared typecheck, lint, format, and clean tooling.                                                          |
-| Go standard library                                                                                       | packages/go                                          | The Go V0 contract module uses stdlib only; no third-party Go modules.                                      |
+| `tsup`                                                                                                    | packages/node (dev)                                  | Produces the public SDK's ESM, CommonJS, and declaration artifacts.                                         |
+| Go standard library                                                                                       | packages/go core                                     | Bounded queue, delivery, diagnostics, and `net/http` middleware.                                            |
+| `github.com/labstack/echo/v4`                                                                             | packages/go/echo                                     | Framework route-template and response/error integration; v4.12 is the Go 1.22-compatible minimum.           |
 
 `APP_HEALTH_MODE=local` uses the in-memory adapter. Production mode requires a
 bound D1 database, Analytics Engine dataset, read-scoped query-token secret,
@@ -71,6 +73,68 @@ cd packages/go
 go test ./...
 go vet ./...
 ```
+
+## Install the SDKs
+
+### Express on Node.js 20+
+
+```bash
+npm install @saas-maker/app-health
+```
+
+```ts
+import { createAppHealthClient } from '@saas-maker/app-health';
+import { expressMiddleware } from '@saas-maker/app-health/express';
+
+const appHealth = createAppHealthClient({
+  key: process.env.APP_HEALTH_INGEST_KEY!,
+  endpoint: 'https://ingest.sassmaker.com/v1/ingest',
+  release: process.env.APP_VERSION,
+});
+app.use(expressMiddleware({ client: appHealth }));
+
+// During graceful shutdown:
+await appHealth.close();
+```
+
+### Echo on Go 1.22+
+
+The GitHub repository is private, so the consuming machine must be able to
+authenticate to GitHub:
+
+```bash
+go env -w GOPRIVATE=github.com/sarthakagrawal927/app-health
+go get github.com/sarthakagrawal927/app-health/packages/go@v0.1.0
+```
+
+```go
+client := apphealth.New(apphealth.Config{
+	IngestKey: os.Getenv("APP_HEALTH_INGEST_KEY"),
+	IngestURL: "https://ingest.sassmaker.com/v1/ingest",
+})
+e.Use(apphealthecho.Middleware(client))
+```
+
+Call `client.Close` with a bounded context during graceful shutdown. Use
+`client.Stats()` or `appHealth.diagnostics()` for local delivery counters.
+Complete runnable examples live in `examples/go-echo` and `examples/node`.
+
+## SDK release procedure
+
+SDK releases are explicit rather than automatic:
+
+```bash
+pnpm --filter @saas-maker/app-health run pack:verify
+npm whoami
+npm publish packages/node --access public
+
+git tag packages/go/v0.1.0
+git push origin packages/go/v0.1.0
+```
+
+Only publish or tag the exact pushed commit after repository and consumer
+checks pass. npm publication is skipped when publisher authentication is not
+available.
 
 ### Web dev server
 
@@ -116,8 +180,9 @@ Current browser captures are checked in under `docs/screenshots`:
   `approximatePercentiles` — seeded endpoint metrics for the in-memory dev
   adapter.
 
-`packages/go` mirrors the same types, bounds, validators, and fixtures in Go
-using only the standard library.
+`packages/go` mirrors the same types, bounds, validators, and fixtures in Go.
+Its core and `net/http` middleware use only the standard library; the `/echo`
+subpackage adds Echo v4 integration.
 
 ## Observed-endpoint semantics
 
@@ -165,7 +230,7 @@ both SDKs enforce the same boundary at capture time.
 ## Current boundary
 
 The endpoint-only V0 is live on Cloudflare with both approved hostnames, D1,
-Analytics Engine, and owner/ingest key boundaries. A real Node and Go canary
-proved creation, key handoff, ingest, and connected state; final acceptance is
-pending the additive endpoint-inventory migration and the corrected canary.
-Alerts, traces, logs, and broader incident workflows remain explicitly out of scope.
+Analytics Engine, and owner/ingest key boundaries. Real Node and Go canaries
+proved creation, key handoff, ingest, connected state, and normalized endpoint
+inventory. Alerts, traces, logs, and broader incident workflows remain
+explicitly out of scope.

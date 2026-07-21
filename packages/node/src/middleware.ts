@@ -1,4 +1,4 @@
-// Express middleware for @app-health/node.
+// Express middleware for @saas-maker/app-health/express.
 //
 // Captures method, framework route template (Express `baseUrl + route.path`
 // after the response completes), status code, integer duration, timestamp,

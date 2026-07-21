@@ -6,7 +6,7 @@
 // are bounded with exponential backoff and only applied to transient errors
 // (network failures, 5xx, 429). Non-retryable 4xx responses fail fast.
 
-import type { EventBatchV1 } from '@app-health/contracts';
+import type { EventBatchV1 } from './contracts.js';
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<{ status: number }>;
 

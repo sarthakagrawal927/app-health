@@ -303,12 +303,12 @@ function KeySetup({
   created: CreateAppResponseV1;
   onDone: () => void;
 }): JSX.Element {
-  const [runtime, setRuntime] = useState<'node' | 'go'>('node');
+  const [runtime, setRuntime] = useState<'express' | 'echo'>('express');
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
-  const nodeSnippet = `npm install @app-health/node\n\napp.use(appHealth({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest'\n}));`;
-  const goSnippet = `client := apphealth.New(apphealth.Config{\n  IngestKey: "${key}",\n  IngestURL: "${INGEST_ORIGIN}/v1/ingest",\n})\nhandler := client.Middleware(mux)`;
-  const snippet = runtime === 'node' ? nodeSnippet : goSnippet;
+  const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
+  const echoSnippet = `go env -w GOPRIVATE=github.com/sarthakagrawal927/app-health\ngo get github.com/sarthakagrawal927/app-health/packages/go@v0.1.0\n\nclient := apphealth.New(apphealth.Config{\n  IngestKey: "${key}",\n  IngestURL: "${INGEST_ORIGIN}/v1/ingest",\n})\ne.Use(apphealthecho.Middleware(client))`;
+  const snippet = runtime === 'express' ? expressSnippet : echoSnippet;
 
   async function copy(value: string, label: string): Promise<void> {
     await navigator.clipboard?.writeText(value);
@@ -338,11 +338,15 @@ function KeySetup({
       </section>
       <section className="snippet-panel">
         <div className="runtime-tabs" role="tablist" aria-label="SDK runtime">
-          <button role="tab" aria-selected={runtime === 'node'} onClick={() => setRuntime('node')}>
-            Node.js
+          <button
+            role="tab"
+            aria-selected={runtime === 'express'}
+            onClick={() => setRuntime('express')}
+          >
+            Express
           </button>
-          <button role="tab" aria-selected={runtime === 'go'} onClick={() => setRuntime('go')}>
-            Go
+          <button role="tab" aria-selected={runtime === 'echo'} onClick={() => setRuntime('echo')}>
+            Go + Echo
           </button>
         </div>
         <pre>

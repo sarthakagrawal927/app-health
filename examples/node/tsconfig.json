@@ -3,7 +3,12 @@
   "compilerOptions": {
     "noEmit": true,
     "module": "ESNext",
-    "moduleResolution": "Bundler"
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@saas-maker/app-health": ["../../packages/node/dist/index.d.ts"],
+      "@saas-maker/app-health/express": ["../../packages/node/dist/express.d.ts"]
+    }
   },
   "include": ["server.ts"]
 }

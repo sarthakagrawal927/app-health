@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { createAppHealthClient, expressMiddleware } from '../src/index.js';
+import { createAppHealthClient } from '../src/index.js';
+import { expressMiddleware } from '../src/express.js';
 
 // Small overhead benchmark: measures the per-request overhead added by the
 // middleware when delivery is asynchronous and non-blocking. Asserts a loose

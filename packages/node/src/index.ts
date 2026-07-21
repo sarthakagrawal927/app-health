@@ -1,8 +1,7 @@
-// @app-health/node — V0 Node SDK for endpoint health.
+// @saas-maker/app-health — Node SDK for endpoint health.
 //
 // Public surface:
 //   - createAppHealthClient(options): bounded async batching client.
-//   - expressMiddleware(options): Express RequestHandler.
 //   - normalize* helpers and V1 contract re-exports.
 //
 // Privacy: only method, normalized route template, status, duration,
@@ -12,8 +11,6 @@
 
 export { createAppHealthClient } from './client.js';
 export type { AppHealthClient, AppHealthClientOptions, EventInput } from './client.js';
-export { expressMiddleware } from './middleware.js';
-export type { ExpressMiddlewareOptions } from './middleware.js';
 export { sendBatch } from './transport.js';
 export type { TransportOptions, TransportResult, FetchLike } from './transport.js';
 export {
@@ -27,7 +24,7 @@ export {
 export { randomUUID } from './uuid.js';
 export type { AppHealthDiagnostics } from './diagnostics.js';
 
-export type { EventV1, EventBatchV1, RuntimeField, SchemaVersion } from '@app-health/contracts';
+export type { EventV1, EventBatchV1, RuntimeField, SchemaVersion } from './contracts.js';
 export {
   SCHEMA_VERSION,
   MAX_BATCH_EVENTS,
@@ -37,4 +34,4 @@ export {
   MAX_RELEASE_LENGTH,
   MIN_STATUS_CODE,
   MAX_STATUS_CODE,
-} from '@app-health/contracts';
+} from './contracts.js';

@@ -63,14 +63,6 @@ func (c *Client) record(rw *responseWriter, r *http.Request, start time.Time, el
 		method = method[:MaxMethodLength]
 	}
 
-	dur := int(elapsed.Milliseconds())
-	if dur < 0 {
-		dur = 0
-	}
-	if dur > MaxDurationMs {
-		dur = MaxDurationMs
-	}
-
 	status := rw.status
 	if status < MinStatusCode || status > MaxStatusCode {
 		// Unknown or missing status; record as 200 which is the net/http
@@ -78,19 +70,16 @@ func (c *Client) record(rw *responseWriter, r *http.Request, start time.Time, el
 		status = http.StatusOK
 	}
 
-	ev := EventV1{
-		EventID:    newEventID(),
-		Timestamp:  start.UnixMilli(),
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	c.Record(RecordInput{
 		Method:     method,
 		Route:      route,
 		StatusCode: status,
-		DurationMs: dur,
-	}
-	if r := c.cfg.Release; r != "" {
-		rr := r
-		ev.Release = &rr
-	}
-	c.enqueue(ev)
+		Duration:   elapsed,
+		Timestamp:  start,
+	})
 }
 
 // resolveRoute picks the route identity in priority order:
