@@ -1,5 +1,13 @@
 ## ADDED Requirements
 
+### Requirement: Environment-gated construction
+The core SDK SHALL provide a small environment constructor that returns a
+client only when the required environment matches and the ingest key exists.
+
+#### Scenario: Non-target environment has a key
+- **WHEN** `APP_ENV` does not equal the required environment
+- **THEN** the constructor returns nil without starting a delivery goroutine
+
 ### Requirement: Echo v5 endpoint capture
 The SDK SHALL provide Echo v5 middleware that records only the matched route
 template, method, final status, duration, timestamp, and configured release

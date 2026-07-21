@@ -3,6 +3,7 @@
 - [x] 1.1 Add Echo v5 dependency and thin middleware package
 - [x] 1.2 Add route, status, and privacy tests
 - [x] 1.3 Add install documentation and a local Echo v5 example
+- [x] 1.4 Add environment-gated client construction
 
 ## 2. Verification
 
