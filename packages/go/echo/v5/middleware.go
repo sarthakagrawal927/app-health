@@ -2,6 +2,7 @@
 package apphealthechov5
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -9,6 +10,22 @@ import (
 	"github.com/labstack/echo/v5"
 	apphealth "github.com/sarthakagrawal927/app-health/packages/go"
 )
+
+// InstallFromEnvironment installs App Health only when the explicit enabled
+// flag, required environment, and ingest key all allow it. The returned
+// cleanup function flushes pending events and is safe to defer.
+func InstallFromEnvironment(e *echo.Echo, requiredEnvironment string) func() {
+	client := apphealth.NewFromEnvironment(requiredEnvironment, "")
+	if client == nil {
+		return func() {}
+	}
+	e.Use(Middleware(client))
+	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = client.Close(ctx)
+	}
+}
 
 // Middleware records one privacy-safe endpoint summary after each Echo v5
 // handler. It uses Echo's matched route template and preserves responses,
