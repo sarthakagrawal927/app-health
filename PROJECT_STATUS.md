@@ -52,7 +52,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 ## Todo / Planned / Deferred / Blocked
 
 1. **Deferred:** the broader owner-first Problem workflow in `build-app-health-mvp` until the endpoint V0 earns expansion.
-2. **Production cutover:** deployment approval is recorded. Complete the Access issuer/audience/owner policy and read-scoped Analytics Engine query token, apply the first D1 migration, deploy both approved custom hostnames, and run the Node/Go canary.
+2. **Production cutover:** authorized and active. Complete the Access issuer/audience/owner policy and read-scoped Analytics Engine query token, apply the first D1 migration, deploy both approved custom hostnames, and run the Node/Go canary.
 3. **Verification:** the injected-failure D1, Access identity, host-boundary,
    ingest-without-Access, body-limit, no-store, and missing-binding matrices are
    covered locally. Production resource provisioning and the real canary remain
