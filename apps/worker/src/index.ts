@@ -6,7 +6,6 @@ import {
   WINDOWS,
   type Window,
 } from '@app-health/contracts';
-import { CloudflareAccessIdentityAdapter } from './access-identity.js';
 import {
   AnalyticsEngineBuckets,
   createAnalyticsQuery,
@@ -15,7 +14,11 @@ import {
 import { D1ControlPlane, type D1DatabaseLike } from './d1-adapter.js';
 import { InMemoryAdapter, DEDUPE_WINDOW_MS } from './in-memory-adapter.js';
 import type { AppHealthRepositories } from './repository.js';
-import { LocalOwnerIdentityAdapter, type OwnerIdentityAdapter } from './identity.js';
+import {
+  BearerOwnerIdentityAdapter,
+  LocalOwnerIdentityAdapter,
+  type OwnerIdentityAdapter,
+} from './identity.js';
 import { AppHealthService } from './service.js';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -25,9 +28,7 @@ export interface Env {
   APP_HEALTH_DASHBOARD_HOST?: string;
   APP_HEALTH_INGEST_HOST?: string;
   APP_HEALTH_INGEST_ORIGIN?: string;
-  ACCESS_ISSUER?: string;
-  ACCESS_AUDIENCE?: string;
-  ACCESS_OWNER_EMAIL?: string;
+  OWNER_AUTH_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   ANALYTICS_ENGINE_QUERY_TOKEN?: string;
   DB?: D1DatabaseLike;
@@ -67,9 +68,7 @@ async function resolveAdapter(env: Env): Promise<AdapterBundle | null> {
   if (
     !env.DB ||
     !env.TELEMETRY ||
-    !env.ACCESS_ISSUER ||
-    !env.ACCESS_AUDIENCE ||
-    !env.ACCESS_OWNER_EMAIL ||
+    !env.OWNER_AUTH_TOKEN ||
     !env.CLOUDFLARE_ACCOUNT_ID ||
     !env.ANALYTICS_ENGINE_QUERY_TOKEN ||
     !env.APP_HEALTH_DASHBOARD_HOST ||
@@ -89,11 +88,7 @@ async function resolveAdapter(env: Env): Promise<AdapterBundle | null> {
   return {
     repos,
     service: new AppHealthService(repos),
-    identity: new CloudflareAccessIdentityAdapter({
-      issuer: env.ACCESS_ISSUER,
-      audience: env.ACCESS_AUDIENCE,
-      ownerEmail: env.ACCESS_OWNER_EMAIL,
-    }),
+    identity: new BearerOwnerIdentityAdapter(env.OWNER_AUTH_TOKEN),
     local: false,
   };
 }
@@ -157,8 +152,13 @@ const worker = {
     }
 
     if (!hostAllowed(url, bundle, env, 'owner')) return json(404, { error: 'not found' });
+    if (!url.pathname.startsWith('/v1/')) {
+      if (request.method === 'GET' && env.ASSETS) return env.ASSETS.fetch(request);
+      return json(404, { error: 'not found' });
+    }
+
     const owner = await identity.resolve(request);
-    if (!owner) return json(403, { error: 'owner identity required' }, true);
+    if (!owner) return json(403, { error: 'owner secret required' }, true);
 
     if (url.pathname === '/v1/apps') {
       if (request.method === 'GET')
@@ -222,7 +222,6 @@ const worker = {
       );
     }
 
-    if (!bundle.local && request.method === 'GET' && env.ASSETS) return env.ASSETS.fetch(request);
     return json(404, { error: 'not found' });
   },
 

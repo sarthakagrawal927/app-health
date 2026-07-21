@@ -45,6 +45,21 @@ function apiUrl(path: string): URL {
   return new URL(path, base);
 }
 
+function ownerHeaders(ownerToken: string, headers?: HeadersInit): Headers {
+  const next = new Headers(headers);
+  if (ownerToken) next.set('authorization', `Bearer ${ownerToken}`);
+  return next;
+}
+
+function ownerFetch(
+  path: string | URL,
+  ownerToken: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const url = typeof path === 'string' ? apiUrl(path) : path;
+  return fetch(url, { ...init, headers: ownerHeaders(ownerToken, init.headers) });
+}
+
 function readProject(): SavedProject | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -105,7 +120,93 @@ function methodClass(method: string): string {
   return `method method-${method.toLowerCase()}`;
 }
 
-function Setup({ onCreated }: { onCreated: (created: CreateAppResponseV1) => void }): JSX.Element {
+export function OwnerUnlock({ onUnlock }: { onUnlock: (token: string) => void }): JSX.Element {
+  const [token, setToken] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await ownerFetch('/v1/apps', token.trim());
+      if (response.status === 403) throw new Error('That owner key was not accepted');
+      if (!response.ok) throw new Error(`App Health returned ${response.status}`);
+      onUnlock(token.trim());
+      setToken('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not unlock App Health');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="unlock-shell">
+      <section className="unlock-intro" aria-labelledby="unlock-title">
+        <a className="brand" href="/" aria-label="App Health home">
+          <span className="brand-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          App Health
+        </a>
+        <h1 id="unlock-title">Your services, at a glance.</h1>
+        <p>
+          Unlock the private operator view to issue SDK keys and inspect aggregate endpoint health.
+        </p>
+        <ul aria-label="Privacy guarantees">
+          <li>No request bodies or identities</li>
+          <li>No owner key stored in this browser</li>
+          <li>Aggregate route metrics only</li>
+        </ul>
+      </section>
+      <section className="unlock-panel" aria-label="Unlock App Health">
+        <div className="unlock-status">
+          <span className="signal-dot" /> Private operator access
+        </div>
+        <h2>Unlock dashboard</h2>
+        <p>Use the owner key saved for this Cloudflare deployment.</p>
+        <form onSubmit={(event) => void submit(event)}>
+          <label>
+            Owner key
+            <input
+              autoComplete="current-password"
+              autoFocus
+              maxLength={256}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="aho_••••••••••••"
+              required
+              spellCheck={false}
+              type="password"
+              value={token}
+            />
+          </label>
+          {error ? (
+            <div className="inline-error" role="alert">
+              {error}. Check the key and try again.
+            </div>
+          ) : null}
+          <button className="primary-button" disabled={submitting || !token.trim()} type="submit">
+            {submitting ? 'Checking…' : 'Unlock'}
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+        <p className="unlock-note">The key stays in memory and is cleared when this page closes.</p>
+      </section>
+    </main>
+  );
+}
+
+function Setup({
+  ownerToken,
+  onCreated,
+}: {
+  ownerToken: string;
+  onCreated: (created: CreateAppResponseV1) => void;
+}): JSX.Element {
   const [name, setName] = useState('');
   const [environment, setEnvironment] = useState('production');
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +217,7 @@ function Setup({ onCreated }: { onCreated: (created: CreateAppResponseV1) => voi
     setSubmitting(true);
     setError(null);
     try {
-      const response = await fetch(apiUrl('/v1/apps'), {
+      const response = await ownerFetch('/v1/apps', ownerToken, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, environment }),
@@ -182,7 +283,11 @@ function Setup({ onCreated }: { onCreated: (created: CreateAppResponseV1) => voi
             <span aria-hidden="true">→</span>
           </button>
         </form>
-        <p className="fine-print">Local V0 · no cloud resources are created</p>
+        <p className="fine-print">
+          {import.meta.env.DEV
+            ? 'Local V0 · no cloud resources are created'
+            : 'Private owner session · the owner key is never stored'}
+        </p>
       </section>
     </main>
   );
@@ -360,10 +465,14 @@ function EndpointCard({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Elem
 
 function Dashboard({
   project,
+  ownerToken,
   onReset,
+  onLock,
 }: {
   project: SavedProject;
+  ownerToken: string;
   onReset: () => void;
+  onLock: () => void;
 }): JSX.Element {
   const [windowKey, setWindowKey] = useState<Window>('15m');
   const [sortKey, setSortKey] = useState<SortKey>('health');
@@ -387,8 +496,8 @@ function Dashboard({
         statusUrl.searchParams.set('app_id', project.appId);
         statusUrl.searchParams.set('environment_id', project.environmentId);
         const [endpointResponse, statusResponse] = await Promise.all([
-          fetch(endpointsUrl),
-          fetch(statusUrl),
+          ownerFetch(endpointsUrl, ownerToken),
+          ownerFetch(statusUrl, ownerToken),
         ]);
         if (!endpointResponse.ok || !statusResponse.ok)
           throw new Error(
@@ -414,7 +523,7 @@ function Dashboard({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [project, windowKey, sortKey, sortDirection]);
+  }, [ownerToken, project, windowKey, sortKey, sortDirection]);
 
   const sorted = useMemo(
     () => sortEndpoints(data?.endpoints ?? [], sortKey, sortDirection),
@@ -446,8 +555,11 @@ function Dashboard({
             <strong>{project.name}</strong>
             <span>{project.environment}</span>
           </div>
-          <button aria-label="Forget local project" onClick={onReset}>
-            •••
+          <button className="project-reset" aria-label="Forget local project" onClick={onReset}>
+            Reset
+          </button>
+          <button className="lock-button" onClick={onLock}>
+            Lock
           </button>
         </div>
       </header>
@@ -609,6 +721,9 @@ function Dashboard({
 }
 
 export function App(): JSX.Element {
+  const [ownerToken, setOwnerToken] = useState<string | null>(() =>
+    import.meta.env.DEV ? '' : null,
+  );
   const [project, setProject] = useState<SavedProject | null>(() => {
     if (
       import.meta.env.DEV &&
@@ -625,9 +740,9 @@ export function App(): JSX.Element {
   const [created, setCreated] = useState<CreateAppResponseV1 | null>(null);
 
   useEffect(() => {
-    if (project || import.meta.env.DEV) return;
+    if (project || import.meta.env.DEV || ownerToken === null) return;
     let cancelled = false;
-    void fetch(apiUrl('/v1/apps'))
+    void ownerFetch('/v1/apps', ownerToken)
       .then(async (response) => {
         if (!response.ok) return;
         const listed = (await response.json()) as ListAppsResponseV1;
@@ -645,7 +760,7 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [project]);
+  }, [ownerToken, project]);
 
   function handleCreated(value: CreateAppResponseV1): void {
     const saved = {
@@ -665,7 +780,13 @@ export function App(): JSX.Element {
     setProject(null);
   }
 
+  function lock(): void {
+    if (!import.meta.env.DEV) setOwnerToken(null);
+    setCreated(null);
+  }
+
+  if (ownerToken === null) return <OwnerUnlock onUnlock={setOwnerToken} />;
   if (created) return <KeySetup created={created} onDone={() => setCreated(null)} />;
-  if (!project) return <Setup onCreated={handleCreated} />;
-  return <Dashboard project={project} onReset={reset} />;
+  if (!project) return <Setup ownerToken={ownerToken} onCreated={handleCreated} />;
+  return <Dashboard project={project} ownerToken={ownerToken} onReset={reset} onLock={lock} />;
 }

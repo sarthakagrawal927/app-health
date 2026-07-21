@@ -8,10 +8,10 @@
 
 ## 2. Identity and route boundaries
 
-- [x] 2.1 Implement Cloudflare Access JWT verification for issuer, audience, signature, expiry, and the single-owner allowlist
-- [x] 2.2 Require verified owner identity on every owner API and dashboard route outside explicit local mode while keeping ingest bearer-key authenticated
+- [x] 2.1 Replace Cloudflare Access with timing-safe single-owner bearer-secret verification and remove the unused Access implementation
+- [x] 2.2 Require the owner secret on every owner API outside explicit local mode, keep it in browser memory only, and keep ingest bearer-key authenticated
 - [x] 2.3 Route API requests before static assets, serve the dashboard SPA from the Worker, and apply no-store headers to key and owner responses
-- [x] 2.4 Configure production mode to fail closed when D1, Analytics Engine, query credentials, Access configuration, or the ingest origin is unavailable
+- [x] 2.4 Configure production mode to fail closed when D1, Analytics Engine, query credentials, the owner secret, or the ingest origin is unavailable
 - [x] 2.5 Protect or disable the direct workers.dev hostname and codify the approved dashboard and ingest hostname topology
 
 ## 3. Product flow
@@ -26,7 +26,7 @@
 
 - [x] 4.1 Add D1 adapter tests for transactional creation, scoped verification, revocation, deduplication, expiry cleanup, and injected failures
 - [x] 4.2 Add Analytics Engine tests for privacy exclusions, point aggregation and limits, fixed SQL, sampling weights, histogram merging, and app-environment isolation
-- [x] 4.3 Add Access and routing tests for forged assertions, absent identity, ingest without Access cookies, direct-host bypass, body limits, no-store responses, and missing bindings
+- [x] 4.3 Add owner-secret and routing tests for invalid credentials, absent identity, ingest without owner credentials, direct-host bypass, body limits, no-store responses, missing bindings, and browser non-persistence
 - [x] 4.4 Run the full TypeScript and Go checks plus strict OpenSpec validation and update PROJECT_STATUS.md with the verified production-readiness state
 - [ ] 4.5 With explicit deployment approval, provision the approved Cloudflare bindings and routes without committing secret values
 - [ ] 4.6 Run and record the production canary for app creation, one-time key handoff, Node ingest, Go ingest, connected state, endpoint summaries, and prohibited-data absence

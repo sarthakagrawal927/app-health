@@ -17,8 +17,11 @@ observability platform.
   of building a custom metrics database.
 - Query 15-minute, 1-hour, and 24-hour endpoint summaries through fixed,
   sampling-aware Analytics Engine SQL.
-- Validate Cloudflare Access identity for every owner route while preserving
-  bearer-key authentication for `/v1/ingest`.
+- Validate a dedicated single-owner bearer secret for every owner API while
+  preserving separate scoped bearer-key authentication for `/v1/ingest`.
+- Serve the dashboard shell publicly but keep all owner data and mutations
+  behind the in-memory-only owner secret so no Cloudflare Access subscription
+  or overage authorization is required.
 - Keep the local in-memory adapter and credential-free test path.
 - Add guarded deployment configuration and a production canary for create app
   → issue key → ingest traffic → view data.
@@ -30,7 +33,8 @@ observability platform.
 ### New Capabilities
 
 - `cloudflare-production-runtime`: Cloudflare Worker, D1, Analytics Engine,
-  Access, static assets, deployment configuration, and production canary.
+  owner-secret authentication, static assets, deployment configuration, and
+  production canary.
 
 ### Modified Capabilities
 
@@ -46,10 +50,12 @@ observability platform.
 - Affects the Worker route layer, repository adapters, service layer, D1
   migration, web setup/dashboard flow, SDK endpoint examples, Wrangler
   configuration, tests, OpenSpec contracts, and project status.
-- Adds Cloudflare D1 and Workers Analytics Engine bindings plus Cloudflare
-  Access configuration. Querying Analytics Engine from the Worker requires an
+- Adds Cloudflare D1 and Workers Analytics Engine bindings plus a single-owner
+  Worker secret. Querying Analytics Engine from the Worker requires an
   account identifier and a read-scoped API token supplied as deployment-time
   configuration; no value is committed.
+- Uses only the account's existing Workers Paid subscription and included
+  allowances; the release SHALL NOT activate Zero Trust or another paid add-on.
 - Does not change the public SDK event privacy schema or add a production
   dependency.
 - Confirmed hostnames: private dashboard `health.sassmaker.com`; SDK ingest

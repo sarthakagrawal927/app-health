@@ -32,10 +32,11 @@ Go job that runs `go test ./...` and `go vet ./...` from `packages/go`.
 
 - Edit `openspec/` and `PROJECT_STATUS.md` only through the OpenSpec workflow or parent review.
 - Do not run `wrangler deploy`, create Cloudflare resources, or touch
-  credentials, env files, or production configs. V0 is credential-free and
-  local-only.
-- Production mode fails closed unless D1, Analytics Engine, Access, query-token,
-  and hostname configuration are complete. Ingest remains bearer-key authenticated.
+  credentials, env files, or production configs without explicit production
+  approval. Local V0 remains credential-free.
+- Production mode fails closed unless D1, Analytics Engine, the owner secret,
+  query-token, and hostname configuration are complete. Ingest remains
+  separately bearer-key authenticated.
 - V0 collects only method, normalized route, status, duration, timestamp, and
   optional release. Never add capture of headers, cookies, query values,
   route parameter values, bodies, identity, logs, stacks, or spans.

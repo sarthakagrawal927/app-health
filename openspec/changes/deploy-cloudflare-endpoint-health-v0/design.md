@@ -26,8 +26,8 @@ approximate.
 - Make first valid traffic visible within 30 seconds.
 - Keep durable control-plane state in D1 and telemetry in Analytics Engine.
 - Preserve local credential-free development and the existing privacy tests.
-- Fail closed when owner identity, D1, analytics bindings, or query credentials
-  are absent in production.
+- Fail closed when the owner secret, D1, analytics bindings, or query
+  credentials are absent in production.
 
 **Non-Goals:**
 
@@ -36,8 +36,8 @@ approximate.
   public signup, or retention beyond Analytics Engine's product window.
 - Replacing Cloudflare's own account-level analytics or the separate Fleet
   performance product.
-- Automatic deployment, DNS mutation, Access policy mutation, or secret
-  creation from repository code.
+- Automatic deployment, DNS mutation, paid-plan activation, or secret creation
+  from repository code.
 
 ## Decisions
 
@@ -73,21 +73,20 @@ sums by `_sample_interval`. The Worker merges returned histogram buckets to
 derive approximate p50/p95 and deterministic health states. User input never
 becomes a SQL identifier.
 
-### Access protects owner routes; ingest remains key-authenticated
+### A dedicated owner secret protects owner APIs; ingest remains key-authenticated
 
-Every owner route validates a Cloudflare Access JWT against the configured
-issuer, audience, JWKS, and single-owner allowlist. The raw Access assertion is
-never returned or logged. Production does not trust a mere email header.
+Every owner API validates a dedicated high-entropy bearer secret stored only as
+a Worker secret. Comparison is timing-safe, the secret is never returned or
+logged, and the browser keeps it only in React memory for the current page
+lifetime. Refreshing the page requires unlocking again.
 
-`/v1/ingest` remains outside interactive Access and accepts only a scoped bearer
-key. The preferred routing is a dedicated ingest hostname mapped to the same
-Worker, because an exact Access bypass policy is easier to misconfigure and
-removes Access logging for that path. The approved topology is
-`health.sassmaker.com` for the Access-protected owner surface and
+`/v1/ingest` accepts only a scoped bearer key that is independent from the owner
+secret. The approved topology is `health.sassmaker.com` for the owner surface and
 `ingest.health.sassmaker.com` for key-authenticated SDK traffic.
 
-The `workers.dev` route must be disabled or enforce the same JWT checks so it
-cannot bypass Access.
+The `workers.dev` route remains disabled so it cannot bypass hostname boundaries.
+The static dashboard shell may load without authentication, but every `/v1/*`
+owner response remains protected and no owner data is embedded in assets.
 
 ### One Worker serves API and web assets
 
@@ -110,10 +109,11 @@ tests inject D1, Analytics Engine, JWT, and SQL clients without credentials.
 - **Analytics Engine query API needs a read token** → Store it only as a Worker
   secret, use the narrow Account Analytics Read permission, and fail closed
   when absent.
-- **Access can accidentally block SDK ingest** → Prefer a separate ingest
-  hostname; otherwise test exact path-policy precedence before release.
-- **Access can be bypassed through `workers.dev`** → Disable the route or retain
-  Worker-side JWT verification on every owner request.
+- **Owner secret can leak through browser persistence** → Keep it in component
+  memory only, use a password field, never include it in URLs, logs, analytics,
+  local storage, or session storage, and require re-entry after refresh.
+- **Owner protection can be bypassed through `workers.dev`** → Disable the route
+  and retain Worker-side owner authentication on every owner API request.
 - **D1 setup can partially create records** → Use a transactional D1 batch and
   test injected failures.
 - **Deduplication creates write load** → Keep event-ID rows bounded by the SDK
@@ -129,7 +129,7 @@ tests inject D1, Analytics Engine, JWT, and SQL clients without credentials.
    remote resources.
 2. Run Wrangler configuration validation and local D1 migrations.
 3. With explicit production approval, create/bind D1, configure Analytics
-   Engine, add the read-scoped query secret, and configure Access/routing.
+   Engine, add the read-scoped query and owner secrets, and configure routing.
 4. Deploy to the chosen hostname with `workers.dev` protected or disabled.
 5. Run the production canary: create app → copy key → send Node and Go traffic
    → observe connected state and endpoint aggregates.
@@ -139,5 +139,6 @@ tests inject D1, Analytics Engine, JWT, and SQL clients without credentials.
 
 ## Open Questions
 
-None. The owner approved Workers Analytics Engine and the separate dashboard
-and ingest hostnames on 2026-07-21.
+None. The owner approved Workers Analytics Engine, dedicated owner-secret
+authentication, the separate dashboard and ingest hostnames, and no additional
+Cloudflare subscription on 2026-07-21.

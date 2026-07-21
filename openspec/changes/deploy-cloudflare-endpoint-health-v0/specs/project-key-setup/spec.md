@@ -28,11 +28,11 @@ first seen, and last seen when available.
 - **THEN** setup changes from waiting for traffic to connected within 30 seconds
 
 ### Requirement: Owner API fails closed outside local mode
-The system SHALL require a valid Cloudflare Access identity matching the
-configured single owner outside explicitly marked local development mode.
+The system SHALL require a valid dedicated owner bearer secret outside
+explicitly marked local development mode.
 
 #### Scenario: Non-local identity is missing
-- **WHEN** an owner API request runs outside local mode without a valid Access assertion
+- **WHEN** an owner API request runs outside local mode without the valid owner secret
 - **THEN** the request is rejected and no app or key is created
 
 ## ADDED Requirements

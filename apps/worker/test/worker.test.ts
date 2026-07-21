@@ -75,9 +75,7 @@ function productionEnv(): Env {
   return {
     DB: new ProductionDatabase(),
     TELEMETRY: { writeDataPoint() {} },
-    ACCESS_ISSUER: 'https://team.cloudflareaccess.com',
-    ACCESS_AUDIENCE: 'audience',
-    ACCESS_OWNER_EMAIL: 'owner@example.com',
+    OWNER_AUTH_TOKEN: 'aho_production-owner',
     CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
     ANALYTICS_ENGINE_QUERY_TOKEN: 'query-token',
     APP_HEALTH_DASHBOARD_HOST: 'health.sassmaker.com',
@@ -144,7 +142,7 @@ describe('worker owner APIs fail closed outside local mode', () => {
 });
 
 describe('worker production boundaries', () => {
-  it('allows bearer-key ingest on only the ingest hostname without Access cookies', async () => {
+  it('allows bearer-key ingest on only the ingest hostname without owner credentials', async () => {
     const response = await call(
       'POST',
       '/v1/ingest',
@@ -191,7 +189,7 @@ describe('worker production boundaries', () => {
     ).resolves.toBe(404);
   });
 
-  it('requires Access identity for owner and dashboard routes', async () => {
+  it('requires the owner secret for owner APIs', async () => {
     const response = await call(
       'GET',
       '/v1/apps',
@@ -202,6 +200,33 @@ describe('worker production boundaries', () => {
     );
     expect(response.status).toBe(403);
     expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('accepts the owner secret for owner APIs', async () => {
+    const response = await call(
+      'GET',
+      '/v1/apps',
+      productionEnv(),
+      undefined,
+      bearer('aho_production-owner'),
+      'https://health.sassmaker.com',
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('serves the dashboard shell without exposing owner data', async () => {
+    const env = productionEnv();
+    env.ASSETS = { fetch: async () => new Response('<main>Unlock App Health</main>') };
+    const response = await call(
+      'GET',
+      '/',
+      env,
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toContain('Unlock App Health');
   });
 
   it('rejects declared oversized ingest bodies before parsing', async () => {

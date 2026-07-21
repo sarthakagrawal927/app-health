@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { App, sortEndpoints } from '../src/App.js';
+import { App, OwnerUnlock, sortEndpoints } from '../src/App.js';
 import type { EndpointAggregateV1, InstallationStatusV1 } from '@app-health/contracts';
 
 const STORAGE_KEY = 'app-health-v0-project';
@@ -109,6 +109,22 @@ describe('App Health V0 UI', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('unlocks with an owner key without persisting it in browser storage', async () => {
+    const onUnlock = vi.fn();
+    const fetchMock = vi.fn(async (_input: URL | RequestInfo, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer aho_owner-secret');
+      return Response.json({ apps: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<OwnerUnlock onUnlock={onUnlock} />);
+    const input = screen.getByLabelText('Owner key');
+    expect(input).toHaveAttribute('type', 'password');
+    fireEvent.change(input, { target: { value: 'aho_owner-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('aho_owner-secret'));
+    expect([...storageValues.values()].join('')).not.toContain('aho_owner-secret');
   });
 
   it('starts with the focused project setup flow', () => {

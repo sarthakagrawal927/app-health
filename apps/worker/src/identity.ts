@@ -1,9 +1,5 @@
-// Owner identity for V0.
-// Owner APIs (app creation, key revocation, endpoint queries) require an
-// owner identity. Local development supplies a clearly marked single-operator
-// adapter. Non-local execution without a configured production identity
-// rejects owner API access (fail closed). Production identity selection and
-// deployment remain a later, explicitly approved change.
+// Owner identity for V0. Production uses one high-entropy bearer secret kept
+// in a Worker secret; local development remains credential-free.
 
 /** A resolved local owner. The id is opaque and never persisted as user data. */
 export interface OwnerIdentity {
@@ -32,5 +28,39 @@ export class LocalOwnerIdentityAdapter implements OwnerIdentityAdapter {
 
   resolve(): OwnerIdentity | null {
     return this.owner;
+  }
+}
+
+async function digest(value: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+}
+
+function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  let difference = 0;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    difference |= left[index] ^ right[index];
+  }
+  return difference === 0;
+}
+
+/** Single-owner production identity backed by a Worker secret. */
+export class BearerOwnerIdentityAdapter implements OwnerIdentityAdapter {
+  private readonly expectedDigest: Promise<Uint8Array>;
+
+  constructor(secret: string) {
+    this.expectedDigest = digest(secret);
+  }
+
+  async resolve(request: Request): Promise<OwnerIdentity | null> {
+    const token =
+      request.headers
+        .get('authorization')
+        ?.match(/^Bearer\s+(.+)$/i)?.[1]
+        ?.trim() ?? '';
+    if (!token) return null;
+    const [expected, received] = await Promise.all([this.expectedDigest, digest(token)]);
+    if (!constantTimeEqual(expected, received)) return null;
+    return { id: 'single-owner', label: 'App Health owner' };
   }
 }

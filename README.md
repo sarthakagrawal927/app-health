@@ -3,15 +3,15 @@
 App Health V0 gives a Go or Node application an ingest key and shows how every
 observed endpoint is performing. It includes Express and `net/http` SDKs,
 aggregate-only ingest, and a responsive operator dashboard. Local development
-is credential-free; the production path targets Cloudflare D1, Workers
-Analytics Engine, and Access.
+is credential-free; the production path targets Cloudflare D1 and Workers
+Analytics Engine with a dedicated single-owner Worker secret.
 
 ## Repository layout
 
 ```
 apps/
   web/      Vite + React setup flow and observed-endpoint dashboard
-  worker/   Cloudflare Worker + D1/Analytics Engine/Access production adapters
+  worker/   Cloudflare Worker + D1/Analytics Engine production adapters
 packages/
   contracts/  V1 event, aggregate, app/key, installation-status, query
               contracts with zod runtime validation and canonical fixtures
@@ -39,7 +39,9 @@ customer request paths.
 No Cloudflare resources or credentials are provisioned by this repository.
 `APP_HEALTH_MODE=local` uses the in-memory adapter. Production mode requires a
 bound D1 database, Analytics Engine dataset, read-scoped query-token secret,
-Access configuration, and the approved hostnames before it will serve data.
+owner-authentication secret, and the approved hostnames before it will serve
+owner data. The production dashboard keeps the entered owner key in page memory
+only and requires it again after refresh.
 
 ## Local commands
 

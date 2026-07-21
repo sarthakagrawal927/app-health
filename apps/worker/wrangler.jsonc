@@ -35,11 +35,13 @@
   "triggers": {
     "crons": ["17 * * * *"],
   },
+  "limits": {
+    "cpu_ms": 50,
+  },
   "vars": {
     "APP_HEALTH_DASHBOARD_HOST": "health.sassmaker.com",
     "APP_HEALTH_INGEST_HOST": "ingest.health.sassmaker.com",
     "APP_HEALTH_INGEST_ORIGIN": "https://ingest.health.sassmaker.com",
-    "ACCESS_OWNER_EMAIL": "sarthakagrawal927@gmail.com",
     "CLOUDFLARE_ACCOUNT_ID": "7d048325699a5acddb44d3be31cf6ba9",
   },
   "env": {
