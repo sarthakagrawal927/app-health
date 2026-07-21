@@ -15,8 +15,9 @@
     "@app-health/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241201.0",
+    "@cloudflare/workers-types": "^4.20260702.1",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "wrangler": "^4.80.0"
   }
 }

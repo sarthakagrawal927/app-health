@@ -155,11 +155,14 @@ both SDKs enforce the same boundary at capture time.
   Engine stores only approved aggregate endpoint dimensions and counts.
 - Direct `workers.dev` access is disabled. Missing bindings, Access settings,
   query credentials, or hostname settings fail closed.
-- Provisioning, secrets, Access policies, DNS, deployment, and the production
-  Node/Go canary remain explicit release actions.
+- The APAC D1 control-plane resource and guarded Wrangler configuration are
+  provisioned. Access policy creation, the Analytics Engine query secret,
+  deployment, and the production Node/Go canary remain explicit release actions.
 
 ## Current boundary
 
 The endpoint-only V0 and its production Cloudflare adapters are implemented and
-locally proven. Remote resources have not been provisioned or deployed. Alerts,
-traces, logs, and broader incident workflows remain explicitly out of scope.
+locally proven. The D1 control-plane resource now exists; the Worker is not live
+until Access, the analytics query secret, guarded deployment, and canary pass.
+Alerts, traces, logs, and broader incident workflows remain explicitly out of
+scope.

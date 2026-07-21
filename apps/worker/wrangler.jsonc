@@ -1,8 +1,18 @@
 {
   "name": "app-health-worker",
   "main": "src/index.ts",
-  "compatibility_date": "2024-12-01",
+  "compatibility_date": "2026-07-21",
   "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "health.sassmaker.com",
+      "custom_domain": true,
+    },
+    {
+      "pattern": "ingest.health.sassmaker.com",
+      "custom_domain": true,
+    },
+  ],
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
@@ -14,6 +24,14 @@
       "dataset": "app_health_endpoint_v1",
     },
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "app-health-control-plane",
+      "database_id": "36c203e1-8748-4893-9950-7cf1a150eb9a",
+      "migrations_dir": "migrations",
+    },
+  ],
   "triggers": {
     "crons": ["17 * * * *"],
   },
@@ -21,6 +39,8 @@
     "APP_HEALTH_DASHBOARD_HOST": "health.sassmaker.com",
     "APP_HEALTH_INGEST_HOST": "ingest.health.sassmaker.com",
     "APP_HEALTH_INGEST_ORIGIN": "https://ingest.health.sassmaker.com",
+    "ACCESS_OWNER_EMAIL": "sarthakagrawal927@gmail.com",
+    "CLOUDFLARE_ACCOUNT_ID": "7d048325699a5acddb44d3be31cf6ba9",
   },
   "env": {
     "local": {
