@@ -9,7 +9,7 @@
       "custom_domain": true,
     },
     {
-      "pattern": "ingest.health.sassmaker.com",
+      "pattern": "ingest.sassmaker.com",
       "custom_domain": true,
     },
   ],
@@ -40,8 +40,8 @@
   },
   "vars": {
     "APP_HEALTH_DASHBOARD_HOST": "health.sassmaker.com",
-    "APP_HEALTH_INGEST_HOST": "ingest.health.sassmaker.com",
-    "APP_HEALTH_INGEST_ORIGIN": "https://ingest.health.sassmaker.com",
+    "APP_HEALTH_INGEST_HOST": "ingest.sassmaker.com",
+    "APP_HEALTH_INGEST_ORIGIN": "https://ingest.sassmaker.com",
     "CLOUDFLARE_ACCOUNT_ID": "7d048325699a5acddb44d3be31cf6ba9",
   },
   "env": {

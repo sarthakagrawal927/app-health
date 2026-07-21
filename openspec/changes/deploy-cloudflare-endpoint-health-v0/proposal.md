@@ -59,4 +59,4 @@ observability platform.
 - Does not change the public SDK event privacy schema or add a production
   dependency.
 - Confirmed hostnames: private dashboard `health.sassmaker.com`; SDK ingest
-  `ingest.health.sassmaker.com`.
+  `ingest.sassmaker.com`.

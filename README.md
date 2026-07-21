@@ -152,7 +152,7 @@ both SDKs enforce the same boundary at capture time.
 ## Production boundary
 
 - `health.sassmaker.com` is the private Access-protected dashboard and owner API.
-- `ingest.health.sassmaker.com/v1/ingest` accepts only environment-scoped bearer keys.
+- `ingest.sassmaker.com/v1/ingest` accepts only environment-scoped bearer keys.
 - D1 stores control-plane records and bounded event-ID deduplication; Analytics
   Engine stores only approved aggregate endpoint dimensions and counts.
 - Direct `workers.dev` access is disabled. Missing bindings, Access settings,

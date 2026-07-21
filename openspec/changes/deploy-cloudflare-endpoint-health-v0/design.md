@@ -82,7 +82,9 @@ lifetime. Refreshing the page requires unlocking again.
 
 `/v1/ingest` accepts only a scoped bearer key that is independent from the owner
 secret. The approved topology is `health.sassmaker.com` for the owner surface and
-`ingest.health.sassmaker.com` for key-authenticated SDK traffic.
+`ingest.sassmaker.com` for key-authenticated SDK traffic. A one-level subdomain
+is used so the zone's standard edge certificate covers the hostname without a
+second-level certificate provisioning dependency.
 
 The `workers.dev` route remains disabled so it cannot bypass hostname boundaries.
 The static dashboard shell may load without authentication, but every `/v1/*`

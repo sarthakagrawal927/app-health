@@ -79,8 +79,8 @@ function productionEnv(): Env {
     CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
     ANALYTICS_ENGINE_QUERY_TOKEN: 'query-token',
     APP_HEALTH_DASHBOARD_HOST: 'health.sassmaker.com',
-    APP_HEALTH_INGEST_HOST: 'ingest.health.sassmaker.com',
-    APP_HEALTH_INGEST_ORIGIN: 'https://ingest.health.sassmaker.com',
+    APP_HEALTH_INGEST_HOST: 'ingest.sassmaker.com',
+    APP_HEALTH_INGEST_ORIGIN: 'https://ingest.sassmaker.com',
   };
 }
 
@@ -149,7 +149,7 @@ describe('worker production boundaries', () => {
       productionEnv(),
       currentBatch(),
       bearer('ahk_production'),
-      'https://ingest.health.sassmaker.com',
+      'https://ingest.sassmaker.com',
     );
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({ accepted: 6, duplicates: 0 });
@@ -168,14 +168,9 @@ describe('worker production boundaries', () => {
       ).then((response) => response.status),
     ).resolves.toBe(404);
     await expect(
-      call(
-        'GET',
-        '/v1/apps',
-        env,
-        undefined,
-        undefined,
-        'https://ingest.health.sassmaker.com',
-      ).then((response) => response.status),
+      call('GET', '/v1/apps', env, undefined, undefined, 'https://ingest.sassmaker.com').then(
+        (response) => response.status,
+      ),
     ).resolves.toBe(404);
     await expect(
       call(
@@ -236,7 +231,7 @@ describe('worker production boundaries', () => {
       productionEnv(),
       currentBatch(),
       { ...bearer('ahk_production'), 'content-length': String(256 * 1024 + 1) },
-      'https://ingest.health.sassmaker.com',
+      'https://ingest.sassmaker.com',
     );
     expect(response.status).toBe(413);
   });
@@ -248,7 +243,7 @@ describe('worker production boundaries', () => {
       productionEnv(),
       'x'.repeat(256 * 1024 + 1),
       bearer('ahk_production'),
-      'https://ingest.health.sassmaker.com',
+      'https://ingest.sassmaker.com',
     );
     expect(response.status).toBe(413);
   });
