@@ -105,31 +105,28 @@ export class AppHealthService {
     }
     const batch: EventBatchV1 = validation.batch;
     // Clock skew: reject the batch if any event timestamp is too far from now.
-    const acceptedEvents: EventV1[] = [];
     for (const event of batch.events) {
       if (Math.abs(event.timestamp - now) > MAX_CLOCK_SKEW_MS) {
         return { ok: false, status: 400, error: 'event timestamp outside clock-skew window' };
       }
     }
     const runtime = batch.runtime;
-    let accepted = 0;
-    let duplicates = 0;
-    for (const event of batch.events) {
-      const seen = await this.repos.dedupe.markSeen(
-        keyRecord.app_id,
-        keyRecord.environment_id,
-        event.event_id,
-        now,
-      );
-      if (!seen) {
-        duplicates += 1;
-        continue;
-      }
-      acceptedEvents.push(event);
-      accepted += 1;
-    }
+    const seen = await this.repos.dedupe.markSeen(
+      keyRecord.app_id,
+      keyRecord.environment_id,
+      batch.batch_id,
+      now,
+    );
+    if (!seen) return { ok: true, accepted: 0, duplicates: batch.events.length };
+    const acceptedEvents = batch.events;
+    const accepted = acceptedEvents.length;
     try {
       await this.repos.inventory?.recordObserved(
+        keyRecord.app_id,
+        keyRecord.environment_id,
+        acceptedEvents,
+      );
+      await this.repos.failures?.recordFailures(
         keyRecord.app_id,
         keyRecord.environment_id,
         acceptedEvents,
@@ -146,11 +143,7 @@ export class AppHealthService {
         for (const event of acceptedEvents) await this.applyEvent(keyRecord, event);
       }
     } catch (error) {
-      await Promise.all(
-        acceptedEvents.map((event) =>
-          this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, event.event_id),
-        ),
-      );
+      await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, batch.batch_id);
       throw error;
     }
     if (accepted > 0) {
@@ -161,7 +154,7 @@ export class AppHealthService {
         now,
       );
     }
-    return { ok: true, accepted, duplicates };
+    return { ok: true, accepted, duplicates: 0 };
   }
 
   private async applyEvent(keyRecord: KeyRecordV1, event: EventV1): Promise<void> {

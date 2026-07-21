@@ -317,6 +317,7 @@ func (c *Client) deliverBatch(events []EventV1) {
 
 func (c *Client) buildBatch(events []EventV1) EventBatchV1 {
 	out := EventBatchV1{
+		BatchID:       newEventID(),
 		SchemaVersion: SchemaVersion,
 		Runtime:       RuntimeGo,
 		Events:        events,

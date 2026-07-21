@@ -91,6 +91,7 @@ type EventV1 struct {
 
 // EventBatchV1 is the V1 ingest batch.
 type EventBatchV1 struct {
+	BatchID       string    `json:"batch_id"`
 	SchemaVersion string    `json:"schema_version"`
 	Runtime       Runtime   `json:"runtime"`
 	Release       *string   `json:"release,omitempty"`
@@ -213,6 +214,9 @@ func ValidateEvent(e EventV1) error {
 
 // ValidateBatch validates a V1 batch and normalizes runtime/method casing.
 func ValidateBatch(b EventBatchV1) (EventBatchV1, error) {
+	if !uuidV4Pattern.MatchString(b.BatchID) {
+		return b, errors.New("batch_id: must be a UUID v4")
+	}
 	if b.SchemaVersion != SchemaVersion {
 		return b, fmt.Errorf("schema_version: expected %q, got %q", SchemaVersion, b.SchemaVersion)
 	}

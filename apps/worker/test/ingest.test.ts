@@ -45,6 +45,7 @@ function makeEvent(overrides: Partial<EventV1> & { event_id: string }): EventV1 
 
 function makeBatch(events: EventV1[], runtime: 'node' | 'go' = 'node'): EventBatchV1 {
   return {
+    batch_id: uuid(9000 + events.length),
     schema_version: 'v1',
     runtime,
     release: '0.0.0-test',
@@ -204,8 +205,8 @@ describe('ingest clock skew', () => {
   });
 });
 
-describe('ingest idempotent event handling', () => {
-  it('counts a retried event ID only once', async () => {
+describe('ingest idempotent batch handling', () => {
+  it('counts a retried batch ID only once', async () => {
     const { service } = await freshService();
     const event = makeEvent({ event_id: uuid(10), timestamp: NOW, route: '/dup' });
     const batch = makeBatch([event]);
@@ -228,7 +229,7 @@ describe('ingest idempotent event handling', () => {
     expect(endpoint!.request_count).toBe(1);
   });
 
-  it('processes a mix of new and duplicate events in one batch', async () => {
+  it('accepts repeated event IDs when they belong to distinct batches', async () => {
     const { service } = await freshService();
     const eventA = makeEvent({ event_id: uuid(20), timestamp: NOW, route: '/mix' });
     await service.ingest(SEED_KEY, makeBatch([eventA]), NOW);
@@ -236,12 +237,12 @@ describe('ingest idempotent event handling', () => {
     const result = await service.ingest(SEED_KEY, makeBatch([eventA, eventB]), NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.accepted).toBe(1);
-      expect(result.duplicates).toBe(1);
+      expect(result.accepted).toBe(2);
+      expect(result.duplicates).toBe(0);
     }
   });
 
-  it('scopes identical event IDs to their app and environment', async () => {
+  it('scopes identical batch IDs to their app and environment', async () => {
     const { service } = await freshService();
     const first = await service.createApp({ name: 'dedupe-a', environment: 'prod' }, NOW);
     const second = await service.createApp({ name: 'dedupe-b', environment: 'prod' }, NOW);
