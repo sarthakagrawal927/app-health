@@ -31,5 +31,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache-dependency-path: |
+            packages/go/go.sum
+            examples/go-echo/go.sum
       - run: go test ./...
       - run: go vet ./...
+      - name: Verify tagged Echo release example
+        working-directory: examples/go-echo
+        env:
+          GOPRIVATE: github.com/sarthakagrawal927/app-health
+          GONOSUMDB: github.com/sarthakagrawal927/app-health
+          GOPROXY: direct
+        run: go test ./...

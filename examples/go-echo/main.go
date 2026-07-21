@@ -3,9 +3,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -18,9 +21,17 @@ func main() {
 	if key == "" {
 		log.Fatal("set APP_HEALTH_INGEST_KEY")
 	}
+	ingestURL := os.Getenv("APP_HEALTH_INGEST_URL")
+	if ingestURL == "" {
+		ingestURL = "https://ingest.sassmaker.com/v1/ingest"
+	}
+	address := os.Getenv("APP_ADDR")
+	if address == "" {
+		address = ":8080"
+	}
 	client := apphealth.New(apphealth.Config{
 		IngestKey: key,
-		IngestURL: "https://ingest.sassmaker.com/v1/ingest",
+		IngestURL: ingestURL,
 		Release:   os.Getenv("APP_VERSION"),
 	})
 	defer func() {
@@ -40,5 +51,25 @@ func main() {
 		return context.JSON(http.StatusOK, map[string]string{"id": context.Param("id")})
 	})
 
-	log.Fatal(server.Start(":8080"))
+	serverErrors := make(chan error, 1)
+	go func() {
+		if err := server.Start(address); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrors <- err
+		}
+	}()
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+	select {
+	case signalReceived := <-shutdown:
+		log.Printf("received %s; shutting down", signalReceived)
+	case err := <-serverErrors:
+		log.Printf("server: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("server shutdown: %v", err)
+	}
 }

@@ -118,6 +118,8 @@ e.Use(apphealthecho.Middleware(client))
 Call `client.Close` with a bounded context during graceful shutdown. Use
 `client.Stats()` or `appHealth.diagnostics()` for local delivery counters.
 Complete runnable examples live in `examples/go-echo` and `examples/node`.
+The Echo example intentionally consumes the tagged `v0.1.0` module without a
+local `replace`, so it also acts as a release-distribution canary.
 
 ## SDK release procedure
 
