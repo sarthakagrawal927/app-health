@@ -65,7 +65,9 @@ export type RuntimeField = z.infer<typeof RuntimeField>;
 /** V1 ingest batch. */
 export const EventBatchV1 = z
   .object({
-    batch_id: uuidV4,
+    // Optional only for rollout compatibility with already-released SDKs.
+    // Current SDKs always send it; ingest derives a stable ID for legacy batches.
+    batch_id: uuidV4.optional(),
     schema_version: z.literal(SCHEMA_VERSION),
     runtime: RuntimeField,
     release: release,
