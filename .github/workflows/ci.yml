@@ -36,6 +36,11 @@ jobs:
             examples/go-echo/go.sum
       - run: go test ./...
       - run: go vet ./...
+      - name: Authenticate private Go module fetch
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
       - name: Verify tagged Echo release example
         working-directory: examples/go-echo
         env:
