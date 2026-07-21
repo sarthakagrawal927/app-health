@@ -111,10 +111,11 @@ export class AppHealthService {
       }
     }
     const runtime = batch.runtime;
+    const batchId = batch.batch_id ?? (await legacyBatchID(batch));
     const seen = await this.repos.dedupe.markSeen(
       keyRecord.app_id,
       keyRecord.environment_id,
-      batch.batch_id,
+      batchId,
       now,
     );
     if (!seen) return { ok: true, accepted: 0, duplicates: batch.events.length };
@@ -143,7 +144,7 @@ export class AppHealthService {
         for (const event of acceptedEvents) await this.applyEvent(keyRecord, event);
       }
     } catch (error) {
-      await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, batch.batch_id);
+      await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, batchId);
       throw error;
     }
     if (accepted > 0) {
@@ -226,6 +227,15 @@ export class AppHealthService {
       endpoints,
     };
   }
+}
+
+async function legacyBatchID(batch: EventBatchV1): Promise<string> {
+  const input = batch.events.map((event) => event.event_id).join('\u0000');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  const hex = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  return `legacy-${hex}`;
 }
 
 // Re-export the request validator so the worker route can parse bodies.

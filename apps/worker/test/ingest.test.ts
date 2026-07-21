@@ -206,6 +206,16 @@ describe('ingest clock skew', () => {
 });
 
 describe('ingest idempotent batch handling', () => {
+  it('derives a retry-stable batch ID for legacy SDK payloads', async () => {
+    const { service } = await freshService();
+    const current = makeBatch([makeEvent({ event_id: uuid(9), route: '/legacy' })]);
+    const { batch_id: _batchID, ...legacy } = current;
+    const first = await service.ingest(SEED_KEY, legacy, NOW);
+    const retry = await service.ingest(SEED_KEY, legacy, NOW);
+    expect(first).toMatchObject({ ok: true, accepted: 1, duplicates: 0 });
+    expect(retry).toMatchObject({ ok: true, accepted: 0, duplicates: 1 });
+  });
+
   it('counts a retried batch ID only once', async () => {
     const { service } = await freshService();
     const event = makeEvent({ event_id: uuid(10), timestamp: NOW, route: '/dup' });
