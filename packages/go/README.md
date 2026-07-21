@@ -46,4 +46,6 @@ responses, returned `echo.HTTPError` values, and panics.
 
 Use `client.Stats()` for local queued, sent, failed, retry, and drop counters.
 The SDK never reads headers, query values, route parameters, bodies, cookies,
-or identity.
+or identity. Echo v5 applications use the separate module
+`github.com/sarthakagrawal927/app-health/packages/go/echo/v5`; unmatched
+concrete paths are dropped rather than sent.
