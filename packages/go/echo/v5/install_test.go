@@ -12,6 +12,6 @@ func TestInstallFromEnvironmentDisabledIsNoop(t *testing.T) {
 	t.Setenv("APP_HEALTH_INGEST_KEY", "test-key")
 
 	e := echo.New()
-	cleanup := InstallFromEnvironment(e, "staging")
+	cleanup := InstallFromEnvironment(e, "polaris", "staging")
 	cleanup()
 }

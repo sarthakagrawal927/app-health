@@ -35,9 +35,11 @@ const (
 // All tunable fields default to sane values when zero, so a minimal
 // installation only needs IngestURL and IngestKey.
 type Config struct {
-	IngestURL string
-	IngestKey string
-	Release   string
+	IngestURL   string
+	IngestKey   string
+	Project     string
+	Environment string
+	Release     string
 
 	QueueSize     int
 	BatchSize     int
