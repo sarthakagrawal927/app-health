@@ -23,6 +23,7 @@ import {
   type BucketV1,
   type EnvironmentV1,
   type EventV1,
+  type FailureEventV1,
   type InstallationStatusV1,
   type KeyRecordV1,
   type Runtime,
@@ -362,6 +363,32 @@ export class InMemoryAdapter
         this.failureEvents.set(`${appId}|${envId}|${event.event_id}`, event);
       }
     }
+  }
+
+  async listFailures(
+    appId: string,
+    envId: string,
+    from: number,
+    limit: number,
+  ): Promise<FailureEventV1[]> {
+    const prefix = `${appId}|${envId}|`;
+    return [...this.failureEvents.entries()]
+      .filter(([key, event]) => key.startsWith(prefix) && event.timestamp >= from)
+      .sort(([, left], [, right]) =>
+        right.timestamp === left.timestamp
+          ? right.event_id.localeCompare(left.event_id)
+          : right.timestamp - left.timestamp,
+      )
+      .slice(0, limit)
+      .map(([, event]) => ({
+        failure_id: event.event_id,
+        method: event.method,
+        route: event.route,
+        status_code: event.status_code,
+        duration_ms: event.duration_ms,
+        occurred_at: event.timestamp,
+        release: event.release ?? null,
+      }));
   }
 
   async recordObserved(

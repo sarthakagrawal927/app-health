@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App, OwnerUnlock, sortEndpoints } from '../src/App.js';
-import type { EndpointAggregateV1, InstallationStatusV1 } from '@app-health/contracts';
+import type {
+  EndpointAggregateV1,
+  FailureEventV1,
+  InstallationStatusV1,
+} from '@app-health/contracts';
 
 const STORAGE_KEY = 'app-health-v0-project';
 const storageValues = new Map<string, string>();
@@ -58,6 +62,8 @@ const connected: InstallationStatusV1 = {
 function installFetch(options?: {
   status?: InstallationStatusV1;
   endpointRows?: EndpointAggregateV1[];
+  failureRows?: FailureEventV1[];
+  failureFail?: boolean;
   fail?: boolean;
 }) {
   const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
@@ -92,6 +98,15 @@ function installFetch(options?: {
         refreshed_at: Date.now(),
         window: url.searchParams.get('window') ?? '15m',
         endpoints: options?.endpointRows ?? endpoints,
+      });
+    }
+    if (url.pathname === '/v1/failures') {
+      if (options?.failureFail) return new Response(null, { status: 503 });
+      return Response.json({
+        refreshed_at: Date.now(),
+        retention_hours: 24,
+        limit: Number(url.searchParams.get('limit') ?? 50),
+        failures: options?.failureRows ?? [],
       });
     }
     return new Response(null, { status: 404 });
@@ -188,6 +203,52 @@ describe('App Health V0 UI', () => {
         .filter((url): url is URL => url?.pathname === '/v1/endpoints');
       expect(endpointCalls.at(-1)?.searchParams.get('window')).toBe('1h');
     });
+  });
+
+  it('loads retained failures only after the owner opens Data received', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    const fetchMock = installFetch({
+      failureRows: [
+        {
+          failure_id: '00000000-0000-4000-a000-000000000001',
+          method: 'POST',
+          route: '/orders/:id',
+          status_code: 503,
+          duration_ms: 812,
+          occurred_at: Date.now() - 4_000,
+          release: '2026.07.22',
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findAllByText('/orders');
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => input instanceof URL && input.pathname === '/v1/failures',
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Data received' }));
+    expect(await screen.findByText('/orders/:id')).toBeTruthy();
+    expect(screen.getByText('503')).toBeTruthy();
+    expect(screen.getByText('812 ms')).toBeTruthy();
+    expect(screen.getByText('The complete accepted shape')).toBeTruthy();
+    expect(screen.getByText('Request bodies')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => input instanceof URL && input.pathname === '/v1/failures',
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps the collection policy visible when failure details cannot load', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    installFetch({ failureFail: true });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Data received' }));
+    expect(await screen.findByText('Failure details are unavailable')).toBeTruthy();
+    expect(screen.getByText('Never collected')).toBeTruthy();
+    expect(screen.getByText(/2xx and 3xx requests are folded into counts/i)).toBeTruthy();
   });
 
   it('shows sampled-out endpoint identities without false zero metrics', async () => {

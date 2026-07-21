@@ -1,6 +1,8 @@
 import {
   CreateAppRequestV1,
+  DEFAULT_FAILURE_QUERY_LIMIT,
   EndpointQueryRequestV1,
+  FailureQueryRequestV1,
   InstallationStatusV1,
   ListAppsResponseV1,
   WINDOWS,
@@ -216,6 +218,26 @@ const worker = {
           parsed.data.app_id,
           parsed.data.environment_id,
           parsed.data.window,
+          Date.now(),
+        ),
+        true,
+      );
+    }
+
+    if (url.pathname === '/v1/failures') {
+      if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
+      const parsed = FailureQueryRequestV1.safeParse({
+        app_id: url.searchParams.get('app_id'),
+        environment_id: url.searchParams.get('environment_id'),
+        limit: Number(url.searchParams.get('limit') ?? DEFAULT_FAILURE_QUERY_LIMIT),
+      });
+      if (!parsed.success) return json(400, { error: 'invalid failure query' }, true);
+      return json(
+        200,
+        await service.queryFailures(
+          parsed.data.app_id,
+          parsed.data.environment_id,
+          parsed.data.limit,
           Date.now(),
         ),
         true,

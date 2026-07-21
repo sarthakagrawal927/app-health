@@ -16,6 +16,9 @@ import {
   MAX_BATCH_EVENTS,
   MAX_ROUTE_LENGTH,
   SCHEMA_VERSION,
+  FailureEventV1,
+  FailureQueryRequestV1,
+  FailureQueryResponseV1,
 } from '../src/index.js';
 
 describe('event batch validation', () => {
@@ -116,6 +119,41 @@ describe('event batch validation', () => {
     const result = validateBatch(batch);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.batch.events[0].method).toBe('GET');
+  });
+});
+
+describe('failure transparency contracts', () => {
+  it('accepts only bounded 4xx and 5xx failure rows', () => {
+    const failure = {
+      failure_id: '00000000-0000-4000-a000-000000000001',
+      method: 'GET',
+      route: '/users/:id',
+      status_code: 404,
+      duration_ms: 28,
+      occurred_at: 1_725_000_000_000,
+      release: '2026.07.22',
+    };
+    expect(FailureEventV1.parse(failure)).toEqual(failure);
+    expect(FailureEventV1.safeParse({ ...failure, status_code: 200 }).success).toBe(false);
+    expect(FailureEventV1.safeParse({ ...failure, request_body: 'secret' }).success).toBe(false);
+  });
+
+  it('bounds failure queries and validates the retention policy', () => {
+    expect(FailureQueryRequestV1.parse({ app_id: 'app-1', environment_id: 'env-1' }).limit).toBe(
+      50,
+    );
+    expect(
+      FailureQueryRequestV1.safeParse({ app_id: 'app-1', environment_id: 'env-1', limit: 101 })
+        .success,
+    ).toBe(false);
+    expect(
+      FailureQueryResponseV1.safeParse({
+        refreshed_at: 1,
+        retention_hours: 24,
+        limit: 50,
+        failures: [],
+      }).success,
+    ).toBe(true);
   });
 });
 

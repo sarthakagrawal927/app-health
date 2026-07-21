@@ -346,6 +346,51 @@ describe('ingest aggregate-only storage', () => {
       }),
     ]);
   });
+
+  it('returns every retained 4xx and 5xx field while successes remain aggregate-only', async () => {
+    const { service } = await freshService();
+    const events = [
+      makeEvent({ event_id: uuid(32), status_code: 204, route: '/orders/:id' }),
+      makeEvent({
+        event_id: uuid(33),
+        timestamp: NOW - 1,
+        status_code: 404,
+        route: '/orders/:id',
+        duration_ms: 71,
+      }),
+      makeEvent({ event_id: uuid(34), status_code: 503, route: '/checkout', duration_ms: 812 }),
+    ];
+    await service.ingest(SEED_KEY, makeBatch(events), NOW);
+
+    const response = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, 50, NOW);
+    expect(response).toMatchObject({ retention_hours: 24, limit: 50 });
+    expect(response.failures.map((failure) => failure.status_code)).toEqual([503, 404]);
+    expect(response.failures[0]).toEqual({
+      failure_id: uuid(34),
+      method: 'GET',
+      route: '/checkout',
+      status_code: 503,
+      duration_ms: 812,
+      occurred_at: NOW,
+      release: null,
+    });
+    expect(JSON.stringify(response)).not.toMatch(/headers|query|body|identity|cookie/);
+  });
+
+  it('isolates retained failures by app and environment', async () => {
+    const { service } = await freshService();
+    const other = await service.createApp({ name: 'other', environment: 'staging' }, NOW);
+    await service.ingest(
+      other.key.key,
+      makeBatch([makeEvent({ event_id: uuid(35), status_code: 500, route: '/private' })]),
+      NOW,
+    );
+
+    const seed = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, 50, NOW);
+    expect(seed.failures.some((failure) => failure.route === '/private')).toBe(false);
+    const scoped = await service.queryFailures(other.app.id, other.environment.id, 50, NOW);
+    expect(scoped.failures.map((failure) => failure.route)).toEqual(['/private']);
+  });
 });
 
 describe('fixed latency histograms and window merging', () => {
