@@ -59,6 +59,7 @@ func BuildCanonicalBatch(runtime Runtime, release string, seedBase uint32) Event
 		}
 	}
 	return EventBatchV1{
+		BatchID:       deterministicUUID(seedBase - 1),
 		SchemaVersion: SchemaVersion,
 		Runtime:       runtime,
 		Release:       &release,

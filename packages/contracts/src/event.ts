@@ -65,6 +65,7 @@ export type RuntimeField = z.infer<typeof RuntimeField>;
 /** V1 ingest batch. */
 export const EventBatchV1 = z
   .object({
+    batch_id: uuidV4,
     schema_version: z.literal(SCHEMA_VERSION),
     runtime: RuntimeField,
     release: release,

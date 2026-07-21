@@ -227,7 +227,9 @@ const worker = {
 
   async scheduled(_controller: unknown, env: Env): Promise<void> {
     if (!env.DB) return;
-    await new D1ControlPlane(env.DB).cleanupExpired(Date.now() - DEDUPE_WINDOW_MS, 1000);
+    const control = new D1ControlPlane(env.DB);
+    await control.cleanupExpired(Date.now() - DEDUPE_WINDOW_MS, 10_000);
+    await control.cleanupFailuresExpired(Date.now() - 24 * 60 * 60 * 1000, 10_000);
   },
 };
 

@@ -18,7 +18,7 @@ const ALLOWED_EVENT_KEYS = [
   'status_code',
   'timestamp',
 ].sort();
-const ALLOWED_BATCH_KEYS = ['events', 'release', 'runtime', 'schema_version'].sort();
+const ALLOWED_BATCH_KEYS = ['batch_id', 'events', 'release', 'runtime', 'schema_version'].sort();
 
 const FORBIDDEN_FRAGMENTS = [
   'authorization',

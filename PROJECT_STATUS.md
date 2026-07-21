@@ -39,6 +39,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-21 — added a privacy-bounded normalized D1 endpoint inventory and explicit sampled-metrics UI so every accepted endpoint remains visible without inventing zero values
 - 2026-07-21 — applied the additive production migration and deployed Worker version `81eae678-6774-4229-9136-064e7ff3ecb5`; the corrected canary sent three Node and four Go events with no delivery failures, reached connected state, and returned all five observed routes
 - 2026-07-21 — made the Node SDK release-ready as `@saas-maker/app-health` with ESM/CommonJS/types and external tarball proofs; added the Go 1.22-compatible Echo adapter, public framework record API, private-module install path, and route/error/panic/privacy/outage integration coverage
+- 2026-07-21 — reduced D1 dedupe from one row per request to one row per SDK batch; retained parameter-free 4xx/5xx details for 24 hours while all requests remain histogram-aggregated for pXX metrics
 
 ## Products
 
@@ -53,6 +54,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - **Go SDK:** real private GitHub module with `net/http` and `/echo` middleware, a bounded adapter record API, route-pattern/resolver support, response/error/panic preservation, privacy/outage/retry/overflow/close tests, and benchmark coverage.
 - **Operator dashboard:** local app/key setup, one-time key handoff, verified Express/Echo snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
 - **End-to-end local proof:** the Express and Go examples each sent `/health`, `/users/:id`, and `/orders` through the same local ingest and query APIs used by the dashboard; both runtimes reached connected state and the aggregates updated.
+- **Storage-bounded ingest:** retry-stable batch IDs reduce temporary D1 dedupe rows by up to 100× at the default batch size; successful requests stay aggregate-only and individual 4xx/5xx details expire after 24 hours.
 
 ## Todo / Planned / Deferred / Blocked
 

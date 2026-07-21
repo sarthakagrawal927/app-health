@@ -22,6 +22,7 @@ import {
   type AppV1,
   type BucketV1,
   type EnvironmentV1,
+  type EventV1,
   type InstallationStatusV1,
   type KeyRecordV1,
   type Runtime,
@@ -97,7 +98,8 @@ export class InMemoryAdapter
   private readonly keysById = new Map<string, KeyRecordV1>();
   private readonly keysByVerifier = new Map<string, KeyRecordV1>();
   private readonly installation = new Map<string, InstallationRow>();
-  private readonly seenEvents = new Map<string, number>();
+  private readonly seenBatches = new Map<string, number>();
+  private readonly failureEvents = new Map<string, EventV1>();
   private readonly observedEndpoints = new Map<
     string,
     { method: string; route: string; first_seen: number; last_seen: number }
@@ -121,6 +123,7 @@ export class InMemoryAdapter
       installation: this,
       dedupe: this,
       inventory: this,
+      failures: this,
       buckets: this,
     };
   }
@@ -329,28 +332,36 @@ export class InMemoryAdapter
 
   // --- DedupeRepository ---
 
-  async markSeen(appId: string, envId: string, eventId: string, now: number): Promise<boolean> {
+  async markSeen(appId: string, envId: string, batchId: string, now: number): Promise<boolean> {
     this.pruneDedupe(now);
-    const key = `${appId}|${envId}|${eventId}`;
-    if (this.seenEvents.has(key)) return false;
-    this.seenEvents.set(key, now);
+    const key = `${appId}|${envId}|${batchId}`;
+    if (this.seenBatches.has(key)) return false;
+    this.seenBatches.set(key, now);
     return true;
   }
 
-  async forget(appId: string, envId: string, eventId: string): Promise<void> {
-    this.seenEvents.delete(`${appId}|${envId}|${eventId}`);
+  async forget(appId: string, envId: string, batchId: string): Promise<void> {
+    this.seenBatches.delete(`${appId}|${envId}|${batchId}`);
   }
 
   async cleanupExpired(before: number, limit: number): Promise<number> {
     let removed = 0;
-    for (const [key, seenAt] of this.seenEvents) {
+    for (const [key, seenAt] of this.seenBatches) {
       if (removed >= limit) break;
       if (seenAt < before) {
-        this.seenEvents.delete(key);
+        this.seenBatches.delete(key);
         removed += 1;
       }
     }
     return removed;
+  }
+
+  async recordFailures(appId: string, envId: string, events: readonly EventV1[]): Promise<void> {
+    for (const event of events) {
+      if (event.status_code >= 400) {
+        this.failureEvents.set(`${appId}|${envId}|${event.event_id}`, event);
+      }
+    }
   }
 
   async recordObserved(
@@ -411,8 +422,8 @@ export class InMemoryAdapter
 
   private pruneDedupe(now: number): void {
     const cutoff = now - DEDUPE_WINDOW_MS;
-    for (const [id, seenAt] of this.seenEvents) {
-      if (seenAt < cutoff) this.seenEvents.delete(id);
+    for (const [id, seenAt] of this.seenBatches) {
+      if (seenAt < cutoff) this.seenBatches.delete(id);
     }
   }
 

@@ -13,6 +13,7 @@ import type {
   InstallationStatusV1,
   KeyRecordV1,
   Runtime,
+  EventV1,
 } from '@app-health/contracts';
 
 /** Persisted app records. */
@@ -60,14 +61,18 @@ export interface InstallationRepository {
 }
 
 /**
- * Bounded deduplication of event IDs. Returns true when the event_id is newly
+ * Bounded deduplication of batch IDs. Returns true when the batch_id is newly
  * seen within the window, false when it is a duplicate.
  */
 export interface DedupeRepository {
-  markSeen(appId: string, envId: string, eventId: string, now: number): Promise<boolean>;
+  markSeen(appId: string, envId: string, batchId: string, now: number): Promise<boolean>;
   /** Release a claim when aggregate persistence fails so the SDK can retry. */
-  forget(appId: string, envId: string, eventId: string): Promise<void>;
+  forget(appId: string, envId: string, batchId: string): Promise<void>;
   cleanupExpired(before: number, limit: number): Promise<number>;
+}
+
+export interface FailureRepository {
+  recordFailures(appId: string, envId: string, events: readonly EventV1[]): Promise<void>;
 }
 
 export interface ObservedEndpoint {
@@ -137,6 +142,7 @@ export interface AppHealthRepositories {
   installation: InstallationRepository;
   dedupe: DedupeRepository;
   inventory?: EndpointInventoryRepository;
+  failures?: FailureRepository;
   buckets: BucketRepository;
   setup?: SetupRepository;
 }

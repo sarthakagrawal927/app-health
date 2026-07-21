@@ -215,6 +215,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
   async function deliver(events: EventV1[]): Promise<void> {
     if (events.length === 0) return;
     const batch = {
+      batch_id: uuid(),
       schema_version: SCHEMA_VERSION,
       runtime: 'node' as const,
       ...(defaultRelease !== undefined ? { release: defaultRelease } : {}),

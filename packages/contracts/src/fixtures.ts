@@ -48,6 +48,7 @@ export function buildCanonicalBatch(
   seedBase = runtime === 'node' ? 1000 : 2000,
 ): EventBatchV1 {
   return {
+    batch_id: uuid(seedBase - 1),
     schema_version: 'v1',
     runtime,
     release,

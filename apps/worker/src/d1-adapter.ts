@@ -4,6 +4,7 @@ import type {
   InstallationStatusV1,
   KeyRecordV1,
   Runtime,
+  EventV1,
 } from '@app-health/contracts';
 import { generateRawKey, hashKey } from './crypto.js';
 import type {
@@ -12,6 +13,7 @@ import type {
   BucketRepository,
   DedupeRepository,
   EndpointInventoryRepository,
+  FailureRepository,
   EnvironmentRepository,
   InstallationRepository,
   KeyRepository,
@@ -49,6 +51,7 @@ export class D1ControlPlane
     InstallationRepository,
     DedupeRepository,
     EndpointInventoryRepository,
+    FailureRepository,
     SetupRepository
 {
   constructor(private readonly db: D1DatabaseLike) {}
@@ -61,6 +64,7 @@ export class D1ControlPlane
       installation: this,
       dedupe: this,
       inventory: this,
+      failures: this,
       buckets,
       setup: this,
     };
@@ -262,27 +266,62 @@ export class D1ControlPlane
     };
   }
 
-  async markSeen(appId: string, envId: string, eventId: string, now: number): Promise<boolean> {
+  async markSeen(appId: string, envId: string, batchId: string, now: number): Promise<boolean> {
     const result = await this.db
       .prepare(
-        'INSERT OR IGNORE INTO seen_events (event_id, app_id, environment_id, seen_at) VALUES (?, ?, ?, ?)',
+        'INSERT OR IGNORE INTO seen_batches (batch_id, app_id, environment_id, seen_at) VALUES (?, ?, ?, ?)',
       )
-      .bind(eventId, appId, envId, now)
+      .bind(batchId, appId, envId, now)
       .run();
     return (result.meta.changes ?? 0) === 1;
   }
 
-  async forget(appId: string, envId: string, eventId: string): Promise<void> {
+  async forget(appId: string, envId: string, batchId: string): Promise<void> {
     await this.db
-      .prepare('DELETE FROM seen_events WHERE app_id = ? AND environment_id = ? AND event_id = ?')
-      .bind(appId, envId, eventId)
+      .prepare('DELETE FROM seen_batches WHERE app_id = ? AND environment_id = ? AND batch_id = ?')
+      .bind(appId, envId, batchId)
       .run();
   }
 
   async cleanupExpired(before: number, limit: number): Promise<number> {
     const result = await this.db
       .prepare(
-        'DELETE FROM seen_events WHERE rowid IN (SELECT rowid FROM seen_events WHERE seen_at < ? ORDER BY seen_at LIMIT ?)',
+        'DELETE FROM seen_batches WHERE rowid IN (SELECT rowid FROM seen_batches WHERE seen_at < ? ORDER BY seen_at LIMIT ?)',
+      )
+      .bind(before, limit)
+      .run();
+    return result.meta.changes ?? 0;
+  }
+
+  async recordFailures(appId: string, envId: string, events: readonly EventV1[]): Promise<void> {
+    const failures = events.filter((event) => event.status_code >= 400);
+    if (failures.length === 0) return;
+    const results = await this.db.batch(
+      failures.map((event) =>
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO failure_events (failure_id, app_id, environment_id, method, route, status_code, duration_ms, occurred_at, release) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .bind(
+            event.event_id,
+            appId,
+            envId,
+            event.method,
+            event.route,
+            event.status_code,
+            event.duration_ms,
+            event.timestamp,
+            event.release ?? null,
+          ),
+      ),
+    );
+    if (results.some((result) => !result.success)) throw new Error('D1 failure insert failed');
+  }
+
+  async cleanupFailuresExpired(before: number, limit: number): Promise<number> {
+    const result = await this.db
+      .prepare(
+        'DELETE FROM failure_events WHERE rowid IN (SELECT rowid FROM failure_events WHERE occurred_at < ? ORDER BY occurred_at LIMIT ?)',
       )
       .bind(before, limit)
       .run();

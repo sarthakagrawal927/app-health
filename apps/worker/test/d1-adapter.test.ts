@@ -138,12 +138,12 @@ describe('D1 control plane', () => {
       { success: true, meta: { changes: 7 } },
     );
     const control = new D1ControlPlane(db);
-    await expect(control.markSeen('app-1', 'env-1', 'event-1', 100)).resolves.toBe(true);
-    await expect(control.markSeen('app-1', 'env-1', 'event-1', 101)).resolves.toBe(false);
-    await control.forget('app-1', 'env-1', 'event-1');
+    await expect(control.markSeen('app-1', 'env-1', 'batch-1', 100)).resolves.toBe(true);
+    await expect(control.markSeen('app-1', 'env-1', 'batch-1', 101)).resolves.toBe(false);
+    await control.forget('app-1', 'env-1', 'batch-1');
     await expect(control.cleanupExpired(50, 1000)).resolves.toBe(7);
-    expect(db.statements[0].values).toEqual(['event-1', 'app-1', 'env-1', 100]);
-    expect(db.statements[2].values).toEqual(['app-1', 'env-1', 'event-1']);
+    expect(db.statements[0].values).toEqual(['batch-1', 'app-1', 'env-1', 100]);
+    expect(db.statements[2].values).toEqual(['app-1', 'env-1', 'batch-1']);
     expect(db.statements[3].values).toEqual([50, 1000]);
   });
 
