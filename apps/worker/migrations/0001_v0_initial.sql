@@ -1,8 +1,8 @@
 -- V0 additive D1 schema for endpoint health.
 -- All tables are CREATE TABLE IF NOT EXISTS so this migration is safe to apply
 -- repeatedly. No destructive ALTER or DROP is used. This file documents the
--- future production shape; the V0 worker runs against the in-memory adapter
--- and never provisions or connects to D1 resources.
+-- production control-plane shape. Endpoint telemetry lives only in Workers
+-- Analytics Engine.
 
 -- One row per created app. IDs are server-generated opaque strings.
 CREATE TABLE IF NOT EXISTS apps (
@@ -60,24 +60,4 @@ CREATE TABLE IF NOT EXISTS seen_events (
   FOREIGN KEY (environment_id, app_id) REFERENCES environments (id, app_id)
 );
 
--- One-minute endpoint aggregate buckets. Raw request events are NEVER stored.
--- Each bucket is keyed by (app, environment, minute, method, route) and stores
--- mergeable counts plus a fixed latency histogram serialized as JSON text.
-CREATE TABLE IF NOT EXISTS endpoint_buckets (
-  app_id TEXT NOT NULL,
-  environment_id TEXT NOT NULL,
-  bucket_start INTEGER NOT NULL,
-  method TEXT NOT NULL,
-  route TEXT NOT NULL,
-  request_count INTEGER NOT NULL,
-  error_count INTEGER NOT NULL,
-  duration_sum_ms INTEGER NOT NULL,
-  last_seen INTEGER,
-  histogram TEXT NOT NULL,
-  PRIMARY KEY (app_id, environment_id, bucket_start, method, route),
-  FOREIGN KEY (environment_id, app_id) REFERENCES environments (id, app_id)
-);
-
--- Window scans filter by bucket_start; this index keeps those scans bounded.
-CREATE INDEX IF NOT EXISTS idx_endpoint_buckets_window
-  ON endpoint_buckets (app_id, environment_id, bucket_start);
+CREATE INDEX IF NOT EXISTS idx_seen_events_expiry ON seen_events (seen_at);

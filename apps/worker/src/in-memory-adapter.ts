@@ -180,6 +180,10 @@ export class InMemoryAdapter
     return this.apps.get(appId) ?? null;
   }
 
+  async listApps(): Promise<AppV1[]> {
+    return [...this.apps.values()].map((app) => ({ ...app }));
+  }
+
   // --- EnvironmentRepository ---
 
   async createEnvironment(appId: string, name: string, now: number): Promise<EnvironmentV1> {
@@ -190,6 +194,12 @@ export class InMemoryAdapter
 
   async getEnvironment(envId: string): Promise<EnvironmentV1 | null> {
     return this.environments.get(envId) ?? null;
+  }
+
+  async listEnvironments(appId: string): Promise<EnvironmentV1[]> {
+    return [...this.environments.values()]
+      .filter((environment) => environment.app_id === appId)
+      .map((environment) => ({ ...environment }));
   }
 
   // --- KeyRepository ---
@@ -322,6 +332,45 @@ export class InMemoryAdapter
 
   async forget(appId: string, envId: string, eventId: string): Promise<void> {
     this.seenEvents.delete(`${appId}|${envId}|${eventId}`);
+  }
+
+  async cleanupExpired(before: number, limit: number): Promise<number> {
+    let removed = 0;
+    for (const [key, seenAt] of this.seenEvents) {
+      if (removed >= limit) break;
+      if (seenAt < before) {
+        this.seenEvents.delete(key);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  async upsertEvents(
+    appId: string,
+    envId: string,
+    _runtime: Runtime,
+    _release: string | undefined,
+    events: readonly {
+      timestamp: number;
+      method: string;
+      route: string;
+      status_code: number;
+      duration_ms: number;
+    }[],
+  ): Promise<void> {
+    for (const event of events) {
+      await this.upsertBucket({
+        app_id: appId,
+        environment_id: envId,
+        bucket_start: Math.floor(event.timestamp / BUCKET_MS) * BUCKET_MS,
+        method: event.method,
+        route: event.route,
+        statusIsError: isErrorStatus(event.status_code),
+        durationMs: event.duration_ms,
+        timestamp: event.timestamp,
+      });
+    }
   }
 
   private pruneDedupe(now: number): void {

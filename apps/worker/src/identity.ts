@@ -20,7 +20,7 @@ export interface OwnerIdentity {
  */
 export interface OwnerIdentityAdapter {
   /** Resolve the owner for the current request, or null if unauthenticated. */
-  resolve(): OwnerIdentity | null;
+  resolve(request: Request): Promise<OwnerIdentity | null> | OwnerIdentity | null;
 }
 
 /** Clearly-marked single-operator identity for local development only. */

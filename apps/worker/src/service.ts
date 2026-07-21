@@ -18,6 +18,7 @@ import {
   type EventBatchV1,
   type EventV1,
   type KeyRecordV1,
+  type ListAppsResponseV1,
   type Window,
 } from '@app-health/contracts';
 import { SEED_APP_ID, SEED_ENV_ID } from '@app-health/contracts';
@@ -34,6 +35,23 @@ export class AppHealthService {
 
   /** Create an app + environment + one-time ingest key. */
   async createApp(request: CreateAppRequest, now: number): Promise<CreateAppResponseV1> {
+    if (this.repos.setup) {
+      const created = await this.repos.setup.createAppEnvironmentKey(
+        request.name,
+        request.environment,
+        now,
+      );
+      return {
+        app: created.app,
+        environment: created.environment,
+        key: {
+          key: created.rawKey,
+          app_id: created.record.app_id,
+          environment_id: created.record.environment_id,
+          created_at: created.record.created_at,
+        },
+      };
+    }
     const app = await this.repos.apps.createApp(request.name, now);
     const env = await this.repos.environments.createEnvironment(app.id, request.environment, now);
     const { record, rawKey } = await this.repos.keys.createKey(app.id, env.id, now);
@@ -46,6 +64,18 @@ export class AppHealthService {
         environment_id: record.environment_id,
         created_at: record.created_at,
       },
+    };
+  }
+
+  async listApps(): Promise<ListAppsResponseV1> {
+    const apps = await this.repos.apps.listApps();
+    return {
+      apps: await Promise.all(
+        apps.map(async (app) => ({
+          app,
+          environments: await this.repos.environments.listEnvironments(app.id),
+        })),
+      ),
     };
   }
 
@@ -75,6 +105,7 @@ export class AppHealthService {
     }
     const batch: EventBatchV1 = validation.batch;
     // Clock skew: reject the batch if any event timestamp is too far from now.
+    const acceptedEvents: EventV1[] = [];
     for (const event of batch.events) {
       if (Math.abs(event.timestamp - now) > MAX_CLOCK_SKEW_MS) {
         return { ok: false, status: 400, error: 'event timestamp outside clock-skew window' };
@@ -94,13 +125,28 @@ export class AppHealthService {
         duplicates += 1;
         continue;
       }
-      try {
-        await this.applyEvent(keyRecord, event);
-      } catch (error) {
-        await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, event.event_id);
-        throw error;
-      }
+      acceptedEvents.push(event);
       accepted += 1;
+    }
+    try {
+      if (this.repos.buckets.upsertEvents) {
+        await this.repos.buckets.upsertEvents(
+          keyRecord.app_id,
+          keyRecord.environment_id,
+          runtime,
+          batch.release,
+          acceptedEvents,
+        );
+      } else {
+        for (const event of acceptedEvents) await this.applyEvent(keyRecord, event);
+      }
+    } catch (error) {
+      await Promise.all(
+        acceptedEvents.map((event) =>
+          this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, event.event_id),
+        ),
+      );
+      throw error;
     }
     if (accepted > 0) {
       await this.repos.installation.recordIngest(

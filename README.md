@@ -2,14 +2,16 @@
 
 App Health V0 gives a Go or Node application an ingest key and shows how every
 observed endpoint is performing. It includes Express and `net/http` SDKs,
-aggregate-only ingest, and a responsive local operator dashboard.
+aggregate-only ingest, and a responsive operator dashboard. Local development
+is credential-free; the production path targets Cloudflare D1, Workers
+Analytics Engine, and Access.
 
 ## Repository layout
 
 ```
 apps/
   web/      Vite + React setup flow and observed-endpoint dashboard
-  worker/   Cloudflare Worker entry point + in-memory dev adapter
+  worker/   Cloudflare Worker + D1/Analytics Engine/Access production adapters
 packages/
   contracts/  V1 event, aggregate, app/key, installation-status, query
               contracts with zod runtime validation and canonical fixtures
@@ -34,9 +36,10 @@ customer request paths.
 | `typescript`, `eslint`, `prettier`, `typescript-eslint`, `@eslint/js`, `eslint-config-prettier`, `rimraf` | root (dev)                                           | Shared typecheck, lint, format, and clean tooling.                                                          |
 | Go standard library                                                                                       | packages/go                                          | The Go V0 contract module uses stdlib only; no third-party Go modules.                                      |
 
-No Cloudflare resources are provisioned. No `wrangler deploy`, no D1, no R2,
-no Queues, no credentials, no env files. The worker runs against an in-memory
-adapter in `APP_HEALTH_MODE=local`.
+No Cloudflare resources or credentials are provisioned by this repository.
+`APP_HEALTH_MODE=local` uses the in-memory adapter. Production mode requires a
+bound D1 database, Analytics Engine dataset, read-scoped query-token secret,
+Access configuration, and the approved hostnames before it will serve data.
 
 ## Local commands
 
@@ -129,7 +132,9 @@ and Go runtimes.
 - `degraded` — error rate ≥ 1% or p95 ≥ 1000 ms.
 - `healthy` — below both degraded thresholds.
 
-Percentiles are derived from merged fixed latency-histogram counts, never by
+Percentiles are approximate in production because Analytics Engine may sample
+high-volume indexes. Queries weight every count by `_sample_interval`, then
+derive percentiles from merged fixed latency-histogram counts, never by
 averaging bucket percentiles. Bucket bounds are listed in
 `packages/contracts/src/constants.ts` and mirrored in
 `packages/go/contracts.go`.
@@ -142,18 +147,19 @@ values, route parameter values, request or response bodies, user identity,
 logs, stack traces, or spans. The contract validators reject unknown fields;
 both SDKs enforce the same boundary at capture time.
 
-## No-deploy / no-production-auth boundary
+## Production boundary
 
-- Owner APIs (`POST /v1/apps`, `GET /v1/endpoints`, `GET /v1/installation/status`)
-  fail closed with HTTP 403 outside `APP_HEALTH_MODE=local`.
-- `POST /v1/ingest` authenticates an environment-scoped key and writes only
-  one-minute aggregate buckets through the local adapter.
-- No `wrangler deploy`, no Cloudflare resource creation, no credentials, no
-  env files, no production identity adapter. Production auth selection and
-  deployment are explicit later work tracked in `PROJECT_STATUS.md`.
+- `health.sassmaker.com` is the private Access-protected dashboard and owner API.
+- `ingest.health.sassmaker.com/v1/ingest` accepts only environment-scoped bearer keys.
+- D1 stores control-plane records and bounded event-ID deduplication; Analytics
+  Engine stores only approved aggregate endpoint dimensions and counts.
+- Direct `workers.dev` access is disabled. Missing bindings, Access settings,
+  query credentials, or hostname settings fail closed.
+- Provisioning, secrets, Access policies, DNS, deployment, and the production
+  Node/Go canary remain explicit release actions.
 
 ## Current boundary
 
-The endpoint-only V0 is implemented and locally proven. Production identity,
-durable Cloudflare resources, deployment, alerts, traces, logs, and broader
-incident workflows remain explicitly out of scope.
+The endpoint-only V0 and its production Cloudflare adapters are implemented and
+locally proven. Remote resources have not been provisioned or deployed. Alerts,
+traces, logs, and broader incident workflows remain explicitly out of scope.

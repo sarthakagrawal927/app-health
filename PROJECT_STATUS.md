@@ -1,6 +1,6 @@
 # app-health — PROJECT STATUS
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 ## Why / What
 
@@ -10,13 +10,13 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 
 **IN scope:** App/environment creation, one ingest key, Express and Go `net/http` middleware, asynchronous endpoint summaries, aggregate-only storage, and a 15-minute/1-hour/24-hour observed-endpoint performance table.
 
-**OUT of scope:** Unobserved source-route discovery, Problems/incidents, raw logs, request or response content, user identity, traces, AI, alerts, deployment recovery, GitHub installation, teams/roles, billing, production auth, and deployment.
+**OUT of scope:** Unobserved source-route discovery, Problems/incidents, raw logs, request or response content, user identity, traces, AI, alerts, deployment recovery, GitHub installation, teams/roles, and billing.
 
 ## Dependencies
 
 ### External
 
-- Cloudflare Worker and D1 are the V0 implementation hypothesis; no production resources exist yet.
+- Cloudflare Worker, D1 control-plane storage, Workers Analytics Engine telemetry, and Cloudflare Access are the approved production architecture; no production resources exist yet.
 - Node 20+ with Express and Go 1.22+ with `net/http` are the supported V0 runtime surfaces.
 
 ### Internal
@@ -32,6 +32,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-20 — merged the local Wave 1 backend: scoped one-time ingest keys, aggregate-only idempotent ingest, fixed histograms, installation status, endpoint-window queries, and fail-closed non-local owner APIs
 - 2026-07-20 — merged bounded Node/Express and Go `net/http` SDKs with asynchronous batching, timeout/retry/drop behavior, privacy-exclusion tests, benchmarks, and credential-free runnable examples; clean-install TypeScript checks, 39 Go tests, Go vet, and strict OpenSpec validation pass
 - 2026-07-20 — completed the local endpoint dashboard, all six desktop/mobile state captures, and Node/Go example proofs through the real local ingest/query path; full workspace checks, 44 Go tests, Go vet, SDK benchmarks, and strict OpenSpec validation pass
+- 2026-07-21 — implemented the deploy-ready Cloudflare path: transactional D1 control plane, bounded dedupe cleanup, aggregate-only Analytics Engine writes and sampling-aware queries, Access JWT owner verification, separate dashboard/ingest host enforcement, existing-app recovery, static asset routing, and fail-closed production configuration; repository and Go checks plus strict OpenSpec validation pass
 
 ## Products
 
@@ -41,7 +42,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 ## Features (shipped)
 
 - **Development foundation:** pnpm TypeScript workspace plus Go 1.22 module, versioned runtime-validated endpoint contracts, equivalent Node/Go fixtures, local seeded Worker adapter, and green TypeScript/Go CI.
-- **Local endpoint backend:** additive D1 schema, repository boundaries, scoped key lifecycle, aggregate-only authenticated ingest, deterministic endpoint metrics, installation status, and 15-minute/1-hour/24-hour queries. Production D1/auth are not configured.
+- **Cloudflare production implementation:** D1 owns apps/environments/hashed keys/install state/bounded dedupe; Workers Analytics Engine owns sampled endpoint telemetry; Access JWT validation protects owner routes; `workers.dev` is disabled; `health.sassmaker.com` and `ingest.health.sassmaker.com` are the approved boundaries. Resource IDs, policies, and secrets are not provisioned.
 - **Node SDK:** optional Express middleware and bounded fail-open delivery with privacy, outage, retry, overflow, shutdown, and benchmark coverage.
 - **Go SDK:** `net/http` middleware and bounded fail-open delivery with route-pattern/resolver support, response-behavior coverage, privacy/outage/retry/overflow/close tests, and benchmark coverage.
 - **Operator dashboard:** local app/key setup, one-time key handoff, Node/Go snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
@@ -50,4 +51,8 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 ## Todo / Planned / Deferred / Blocked
 
 1. **Deferred:** the broader owner-first Problem workflow in `build-app-health-mvp` until the endpoint V0 earns expansion.
-2. **Blocked for any deployment:** production identity/auth choice and explicit deploy approval.
+2. **Release boundary:** provision D1, bind it as `DB`, configure Access issuer/audience/owner policy, add the read-scoped Analytics Engine query token as a Worker secret, configure both approved custom hostnames, and run the Node/Go canary. This requires explicit deployment approval.
+3. **Verification:** the injected-failure D1, Access identity, host-boundary,
+   ingest-without-Access, body-limit, no-store, and missing-binding matrices are
+   covered locally. Production resource provisioning and the real canary remain
+   the only open change tasks.

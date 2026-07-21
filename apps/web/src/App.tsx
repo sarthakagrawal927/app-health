@@ -14,10 +14,13 @@ import {
   type EndpointAggregateV1,
   type EndpointQueryResponseV1,
   type InstallationStatusV1,
+  type ListAppsResponseV1,
   type Window,
 } from '@app-health/contracts';
 
 const API_BASE = (import.meta.env.VITE_APP_HEALTH_API as string | undefined) ?? '';
+const INGEST_ORIGIN =
+  (import.meta.env.VITE_APP_HEALTH_INGEST_ORIGIN as string | undefined) ?? window.location.origin;
 const STORAGE_KEY = 'app-health-v0-project';
 
 type SortKey = 'health' | 'requests' | 'error_rate' | 'p95' | 'last_seen';
@@ -195,8 +198,8 @@ function KeySetup({
   const [runtime, setRuntime] = useState<'node' | 'go'>('node');
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
-  const nodeSnippet = `npm install @app-health/node\n\napp.use(appHealth({\n  key: '${key}',\n  endpoint: '${window.location.origin}/v1/ingest'\n}));`;
-  const goSnippet = `client := apphealth.New(apphealth.Config{\n  IngestKey: "${key}",\n  IngestURL: "${window.location.origin}/v1/ingest",\n})\nhandler := client.Middleware(mux)`;
+  const nodeSnippet = `npm install @app-health/node\n\napp.use(appHealth({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest'\n}));`;
+  const goSnippet = `client := apphealth.New(apphealth.Config{\n  IngestKey: "${key}",\n  IngestURL: "${INGEST_ORIGIN}/v1/ingest",\n})\nhandler := client.Middleware(mux)`;
   const snippet = runtime === 'node' ? nodeSnippet : goSnippet;
 
   async function copy(value: string, label: string): Promise<void> {
@@ -595,7 +598,10 @@ function Dashboard({
         </section>
         <footer>
           <span>Updated {data ? formatAge(data.refreshed_at) : '—'}</span>
-          <span>Only aggregate route metrics are stored · no headers, bodies, or identities</span>
+          <span>
+            Percentiles are approximate · only aggregate route metrics are stored · no headers,
+            bodies, or identities
+          </span>
         </footer>
       </main>
     </div>
@@ -617,6 +623,29 @@ export function App(): JSX.Element {
     return readProject();
   });
   const [created, setCreated] = useState<CreateAppResponseV1 | null>(null);
+
+  useEffect(() => {
+    if (project || import.meta.env.DEV) return;
+    let cancelled = false;
+    void fetch(apiUrl('/v1/apps'))
+      .then(async (response) => {
+        if (!response.ok) return;
+        const listed = (await response.json()) as ListAppsResponseV1;
+        const first = listed.apps.find((entry) => entry.environments.length > 0);
+        if (!first || cancelled) return;
+        const environment = first.environments[0];
+        setProject({
+          appId: first.app.id,
+          environmentId: environment.id,
+          name: first.app.name,
+          environment: environment.name,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [project]);
 
   function handleCreated(value: CreateAppResponseV1): void {
     const saved = {

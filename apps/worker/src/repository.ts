@@ -19,12 +19,14 @@ import type {
 export interface AppRepository {
   createApp(name: string, now: number): Promise<AppV1>;
   getApp(appId: string): Promise<AppV1 | null>;
+  listApps(): Promise<AppV1[]>;
 }
 
 /** Persisted environment records, scoped to an app. */
 export interface EnvironmentRepository {
   createEnvironment(appId: string, name: string, now: number): Promise<EnvironmentV1>;
   getEnvironment(envId: string): Promise<EnvironmentV1 | null>;
+  listEnvironments(appId: string): Promise<EnvironmentV1[]>;
 }
 
 /**
@@ -65,6 +67,7 @@ export interface DedupeRepository {
   markSeen(appId: string, envId: string, eventId: string, now: number): Promise<boolean>;
   /** Release a claim when aggregate persistence fails so the SDK can retry. */
   forget(appId: string, envId: string, eventId: string): Promise<void>;
+  cleanupExpired(before: number, limit: number): Promise<number>;
 }
 
 /**
@@ -85,6 +88,28 @@ export interface BucketRepository {
   ): Promise<void>;
   /** Return all buckets for the (app, environment) pair within [from, to]. */
   queryBuckets(appId: string, envId: string, from: number, to: number): Promise<BucketV1[]>;
+  upsertEvents?(
+    appId: string,
+    envId: string,
+    runtime: Runtime,
+    release: string | undefined,
+    events: readonly {
+      timestamp: number;
+      method: string;
+      route: string;
+      status_code: number;
+      duration_ms: number;
+      release?: string;
+    }[],
+  ): Promise<void>;
+}
+
+export interface SetupRepository {
+  createAppEnvironmentKey(
+    name: string,
+    environment: string,
+    now: number,
+  ): Promise<{ app: AppV1; environment: EnvironmentV1; record: KeyRecordV1; rawKey: string }>;
 }
 
 /** Aggregate of all V0 repositories. The in-memory adapter implements this. */
@@ -95,4 +120,5 @@ export interface AppHealthRepositories {
   installation: InstallationRepository;
   dedupe: DedupeRepository;
   buckets: BucketRepository;
+  setup?: SetupRepository;
 }

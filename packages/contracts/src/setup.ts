@@ -61,3 +61,16 @@ export const CreateAppResponseV1 = z.object({
 });
 
 export type CreateAppResponseV1 = z.infer<typeof CreateAppResponseV1>;
+
+export const AppEnvironmentV1 = z.object({
+  app: AppV1,
+  environments: z.array(EnvironmentV1),
+});
+
+export type AppEnvironmentV1 = z.infer<typeof AppEnvironmentV1>;
+
+export const ListAppsResponseV1 = z.object({
+  apps: z.array(AppEnvironmentV1),
+});
+
+export type ListAppsResponseV1 = z.infer<typeof ListAppsResponseV1>;

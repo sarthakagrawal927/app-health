@@ -6,7 +6,7 @@ Also read and follow the shared fleet-level agent standard at `../AGENTS.md`. Tr
 
 - **Stack**: pnpm TypeScript workspace (Vite + React, Cloudflare-compatible Worker, Node/Express SDK) plus a Go 1.22 `net/http` SDK
 - **Local dev**: `pnpm install && pnpm run check`; see the commands below for web and Go
-- **Deploy**: Not configured in V0; production auth and deployment require a later approved change
+- **Deploy**: Production adapters are implemented but resource provisioning and deployment require explicit approval
 
 ## Local commands
 
@@ -30,19 +30,18 @@ Go job that runs `go test ./...` and `go vet ./...` from `packages/go`.
 
 ## Boundaries
 
-- Do not edit `openspec/` or `PROJECT_STATUS.md` from code-change tasks; they
-  are owned by the OpenSpec workflow and parent review.
+- Edit `openspec/` and `PROJECT_STATUS.md` only through the OpenSpec workflow or parent review.
 - Do not run `wrangler deploy`, create Cloudflare resources, or touch
   credentials, env files, or production configs. V0 is credential-free and
   local-only.
-- Owner APIs fail closed outside `APP_HEALTH_MODE=local`. Ingest returns 501
-  in Wave 0; Wave 1 implements authenticated ingest.
+- Production mode fails closed unless D1, Analytics Engine, Access, query-token,
+  and hostname configuration are complete. Ingest remains bearer-key authenticated.
 - V0 collects only method, normalized route, status, duration, timestamp, and
   optional release. Never add capture of headers, cookies, query values,
   route parameter values, bodies, identity, logs, stacks, or spans.
 
 ## Wave status
 
-- Foundation tasks 1.1-1.5 are implemented. Wave 1 (ingest, Node SDK, Go SDK)
-  and Wave 2 (dashboard) remain active in
-  `openspec/changes/build-endpoint-health-v0/tasks.md`.
+- The local endpoint V0 is complete. The production Cloudflare implementation
+  is tracked in `openspec/changes/deploy-cloudflare-endpoint-health-v0/`; only
+  production provisioning and canary verification remain.

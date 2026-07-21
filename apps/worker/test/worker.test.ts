@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import worker, { type Env } from '../src/index.js';
+import type { D1DatabaseLike, D1PreparedStatement, D1RunResult } from '../src/d1-adapter.js';
 import {
   SEED_APP_ID,
   SEED_ENV_ID,
@@ -18,18 +19,80 @@ async function call(
   env: Env,
   body?: unknown,
   headers?: Record<string, string>,
+  origin = 'https://worker.local',
 ): Promise<Response> {
   const init: RequestInit = {
     method,
     headers: { 'content-type': 'application/json', ...(headers ?? {}) },
   };
   if (body !== undefined) init.body = JSON.stringify(body);
-  const url = new URL(`https://worker.local${path}`);
+  const url = new URL(`${origin}${path}`);
   return worker.fetch(new Request(url, init), env);
 }
 
 function bearer(key: string): Record<string, string> {
   return { authorization: `Bearer ${key}` };
+}
+
+class ProductionStatement implements D1PreparedStatement {
+  values: unknown[] = [];
+  constructor(readonly sql: string) {}
+  bind(...values: unknown[]) {
+    this.values = values;
+    return this;
+  }
+  async first<T>(): Promise<T | null> {
+    if (this.sql.includes('FROM keys WHERE verifier_hash')) {
+      return {
+        id: 'key-1',
+        app_id: 'app-1',
+        environment_id: 'env-1',
+        verifier_hash: String(this.values[0]),
+        created_at: 1,
+        revoked_at: null,
+      } as T;
+    }
+    return null;
+  }
+  async all<T>() {
+    return { results: [] as T[] };
+  }
+  async run(): Promise<D1RunResult> {
+    return { success: true, meta: { changes: 1 } };
+  }
+}
+
+class ProductionDatabase implements D1DatabaseLike {
+  prepare(query: string): D1PreparedStatement {
+    return new ProductionStatement(query);
+  }
+  async batch(statements: D1PreparedStatement[]) {
+    return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+  }
+}
+
+function productionEnv(): Env {
+  return {
+    DB: new ProductionDatabase(),
+    TELEMETRY: { writeDataPoint() {} },
+    ACCESS_ISSUER: 'https://team.cloudflareaccess.com',
+    ACCESS_AUDIENCE: 'audience',
+    ACCESS_OWNER_EMAIL: 'owner@example.com',
+    CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
+    ANALYTICS_ENGINE_QUERY_TOKEN: 'query-token',
+    APP_HEALTH_DASHBOARD_HOST: 'health.sassmaker.com',
+    APP_HEALTH_INGEST_HOST: 'ingest.health.sassmaker.com',
+    APP_HEALTH_INGEST_ORIGIN: 'https://ingest.health.sassmaker.com',
+  };
+}
+
+function currentBatch() {
+  const now = Date.now();
+  const batch = buildCanonicalBatch('node');
+  return {
+    ...batch,
+    events: batch.events.map((event, index) => ({ ...event, timestamp: now + index })),
+  };
 }
 
 describe('worker /v1/health', () => {
@@ -47,7 +110,7 @@ describe('worker owner APIs fail closed outside local mode', () => {
       name: 'x',
       environment: 'prod',
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(503);
   });
 
   it('rejects /v1/endpoints outside local mode', async () => {
@@ -56,7 +119,7 @@ describe('worker owner APIs fail closed outside local mode', () => {
       `/v1/endpoints?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&window=15m`,
       NON_LOCAL_ENV,
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(503);
   });
 
   it('rejects /v1/installation/status outside local mode', async () => {
@@ -65,7 +128,7 @@ describe('worker owner APIs fail closed outside local mode', () => {
       `/v1/installation/status?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}`,
       NON_LOCAL_ENV,
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(503);
   });
 
   it('rejects ingest outside local mode', async () => {
@@ -76,7 +139,99 @@ describe('worker owner APIs fail closed outside local mode', () => {
       buildCanonicalBatch('node'),
       bearer(SEED_KEY),
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(503);
+  });
+});
+
+describe('worker production boundaries', () => {
+  it('allows bearer-key ingest on only the ingest hostname without Access cookies', async () => {
+    const response = await call(
+      'POST',
+      '/v1/ingest',
+      productionEnv(),
+      currentBatch(),
+      bearer('ahk_production'),
+      'https://ingest.health.sassmaker.com',
+    );
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ accepted: 6, duplicates: 0 });
+  });
+
+  it('rejects workers.dev and cross-host route bypasses', async () => {
+    const env = productionEnv();
+    await expect(
+      call(
+        'POST',
+        '/v1/ingest',
+        env,
+        currentBatch(),
+        bearer('ahk_production'),
+        'https://app-health-worker.example.workers.dev',
+      ).then((response) => response.status),
+    ).resolves.toBe(404);
+    await expect(
+      call(
+        'GET',
+        '/v1/apps',
+        env,
+        undefined,
+        undefined,
+        'https://ingest.health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(404);
+    await expect(
+      call(
+        'POST',
+        '/v1/ingest',
+        env,
+        currentBatch(),
+        bearer('ahk_production'),
+        'https://health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(404);
+  });
+
+  it('requires Access identity for owner and dashboard routes', async () => {
+    const response = await call(
+      'GET',
+      '/v1/apps',
+      productionEnv(),
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('rejects declared oversized ingest bodies before parsing', async () => {
+    const response = await call(
+      'POST',
+      '/v1/ingest',
+      productionEnv(),
+      currentBatch(),
+      { ...bearer('ahk_production'), 'content-length': String(256 * 1024 + 1) },
+      'https://ingest.health.sassmaker.com',
+    );
+    expect(response.status).toBe(413);
+  });
+
+  it('rejects oversized streamed ingest bodies without a content-length header', async () => {
+    const response = await call(
+      'POST',
+      '/v1/ingest',
+      productionEnv(),
+      'x'.repeat(256 * 1024 + 1),
+      bearer('ahk_production'),
+      'https://ingest.health.sassmaker.com',
+    );
+    expect(response.status).toBe(413);
+  });
+
+  it('marks incomplete production binding responses no-store', async () => {
+    const response = await call('GET', '/v1/apps', NON_LOCAL_ENV);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 });
 
