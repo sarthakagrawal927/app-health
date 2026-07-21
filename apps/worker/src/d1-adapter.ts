@@ -5,6 +5,7 @@ import type {
   KeyRecordV1,
   Runtime,
   EventV1,
+  FailureEventV1,
 } from '@app-health/contracts';
 import { generateRawKey, hashKey } from './crypto.js';
 import type {
@@ -316,6 +317,22 @@ export class D1ControlPlane
       ),
     );
     if (results.some((result) => !result.success)) throw new Error('D1 failure insert failed');
+  }
+
+  async listFailures(
+    appId: string,
+    envId: string,
+    from: number,
+    limit: number,
+  ): Promise<FailureEventV1[]> {
+    return (
+      await this.db
+        .prepare(
+          'SELECT failure_id, method, route, status_code, duration_ms, occurred_at, release FROM failure_events WHERE app_id = ? AND environment_id = ? AND occurred_at >= ? ORDER BY occurred_at DESC, failure_id DESC LIMIT ?',
+        )
+        .bind(appId, envId, from, limit)
+        .all<FailureEventV1>()
+    ).results;
   }
 
   async cleanupFailuresExpired(before: number, limit: number): Promise<number> {

@@ -14,6 +14,7 @@ import type {
   KeyRecordV1,
   Runtime,
   EventV1,
+  FailureEventV1,
 } from '@app-health/contracts';
 
 /** Persisted app records. */
@@ -73,6 +74,12 @@ export interface DedupeRepository {
 
 export interface FailureRepository {
   recordFailures(appId: string, envId: string, events: readonly EventV1[]): Promise<void>;
+  listFailures(
+    appId: string,
+    envId: string,
+    from: number,
+    limit: number,
+  ): Promise<FailureEventV1[]>;
 }
 
 export interface ObservedEndpoint {

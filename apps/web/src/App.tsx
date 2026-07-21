@@ -13,6 +13,8 @@ import {
   type CreateAppResponseV1,
   type EndpointAggregateV1,
   type EndpointQueryResponseV1,
+  type FailureEventV1,
+  type FailureQueryResponseV1,
   type InstallationStatusV1,
   type ListAppsResponseV1,
   type Window,
@@ -25,6 +27,7 @@ const STORAGE_KEY = 'app-health-v0-project';
 
 type SortKey = 'health' | 'requests' | 'error_rate' | 'p95' | 'last_seen';
 type SortDirection = 'asc' | 'desc';
+type DashboardView = 'endpoints' | 'data';
 
 interface SavedProject {
   appId: string;
@@ -472,6 +475,270 @@ function EndpointCard({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Elem
   );
 }
 
+const receivedFields = [
+  ['batch_id', 'Retry deduplication', 'Short-lived', 'Eligible for cleanup after 1 hour'],
+  ['schema_version', 'Contract validation', 'Not stored', 'Discarded after validation'],
+  ['runtime', 'SDK and installation state', 'Latest + aggregate', 'Node or Go only'],
+  ['release', 'Release comparison', 'Aggregate / failure', 'Failure value expires after 24 hours'],
+  ['event_id', 'Failure identity', 'Failures only', 'Queryable for 24 hours'],
+  ['timestamp', 'Windowing and freshness', 'Aggregate / inventory / failure', 'No request content'],
+  ['method', 'Endpoint identity', 'Inventory + aggregate + failure', 'Uppercase HTTP method'],
+  ['route', 'Endpoint identity', 'Inventory + aggregate + failure', 'Normalized template only'],
+  [
+    'status_code',
+    'Counts and error classification',
+    'Aggregate / failure',
+    'Exact only for 4xx/5xx',
+  ],
+  ['duration_ms', 'Latency histogram', 'Aggregate / failure', 'Exact only for 4xx/5xx'],
+] as const;
+
+const excludedFields = [
+  'Request bodies',
+  'Response bodies',
+  'Headers',
+  'Cookies',
+  'Query values',
+  'Route parameter values',
+  'User identity',
+  'Logs and stack traces',
+];
+
+function formatTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  }).format(new Date(timestamp));
+}
+
+function FailureRow({ failure }: { failure: FailureEventV1 }): JSX.Element {
+  return (
+    <tr>
+      <td data-label="Method">
+        <span className={methodClass(failure.method)}>{failure.method}</span>
+      </td>
+      <td data-label="Normalized route">
+        <code className="route">{failure.route}</code>
+      </td>
+      <td data-label="Status">
+        <span className={`status-code status-code-${Math.floor(failure.status_code / 100)}xx`}>
+          {failure.status_code}
+        </span>
+      </td>
+      <td data-label="Duration">{failure.duration_ms.toLocaleString()} ms</td>
+      <td data-label="Occurred" title={formatTimestamp(failure.occurred_at)}>
+        {formatAge(failure.occurred_at)}
+      </td>
+      <td data-label="Release">{failure.release ?? '—'}</td>
+      <td data-label="Failure ID">
+        <code className="failure-id" title={failure.failure_id}>
+          {failure.failure_id}
+        </code>
+      </td>
+    </tr>
+  );
+}
+
+function DataReceived({
+  project,
+  ownerToken,
+}: {
+  project: SavedProject;
+  ownerToken: string;
+}): JSX.Element {
+  const [data, setData] = useState<FailureQueryResponseV1 | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load(): Promise<void> {
+      setLoading(true);
+      try {
+        const url = apiUrl('/v1/failures');
+        url.searchParams.set('app_id', project.appId);
+        url.searchParams.set('environment_id', project.environmentId);
+        url.searchParams.set('limit', '50');
+        const response = await ownerFetch(url, ownerToken);
+        if (!response.ok) throw new Error(`API returned ${response.status}`);
+        const next = (await response.json()) as FailureQueryResponseV1;
+        if (!cancelled) {
+          setData(next);
+          setError(null);
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : 'Could not load retained failures');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerToken, project, refresh]);
+
+  return (
+    <div className="transparency-view">
+      <section className="trust-statement" aria-labelledby="trust-statement-title">
+        <div className="trust-signal" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div>
+          <h2 id="trust-statement-title">Every request counts. Only failures leave a row.</h2>
+          <p>
+            2xx and 3xx requests are folded into counts and fixed latency buckets, then their
+            individual events are discarded. 4xx and 5xx details remain queryable for 24 hours.
+          </p>
+        </div>
+        <div className="trust-facts" aria-label="Retention summary">
+          <span>
+            <strong>10</strong> accepted fields
+          </span>
+          <span>
+            <strong>0</strong> payload fields
+          </span>
+          <span>
+            <strong>24h</strong> failure window
+          </span>
+        </div>
+      </section>
+
+      <section className="data-surface" aria-busy={loading}>
+        <div className="surface-heading failure-heading">
+          <div>
+            <h2>Latest retained failures</h2>
+            <span>
+              {data?.failures.length ?? 0} of up to 50 shown
+              {data ? ` · refreshed ${formatAge(data.refreshed_at)}` : ''}
+            </span>
+          </div>
+          <button
+            className="secondary-button compact-button"
+            onClick={() => setRefresh((v) => v + 1)}
+          >
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+        {error ? (
+          <div className="failure-error" role="alert">
+            <div>
+              <strong>Failure details are unavailable</strong>
+              <p>{error}. Collection policy and aggregate metrics are unchanged.</p>
+            </div>
+            <button className="secondary-button" onClick={() => setRefresh((v) => v + 1)}>
+              Try again
+            </button>
+          </div>
+        ) : null}
+        {loading && !data ? (
+          <div className="failure-loading" aria-label="Loading recent failures">
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : null}
+        {!loading && !error && data?.failures.length === 0 ? (
+          <div className="failure-empty">
+            <strong>No retained failures in the last 24 hours</strong>
+            <p>
+              This means there are no individual 4xx or 5xx rows to show. Check Endpoints for the
+              complete aggregate traffic picture.
+            </p>
+          </div>
+        ) : null}
+        {data && data.failures.length > 0 ? (
+          <div className="table-scroll">
+            <table className="endpoint-table failure-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Normalized route</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th>Occurred</th>
+                  <th>Release</th>
+                  <th>Failure ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.failures.map((failure) => (
+                  <FailureRow key={failure.failure_id} failure={failure} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="field-ledger" aria-labelledby="field-ledger-title">
+        <div className="ledger-intro">
+          <h2 id="field-ledger-title">The complete accepted shape</h2>
+          <p>
+            Unknown fields make the entire batch fail validation. App Health does not silently
+            accept extra request data.
+          </p>
+        </div>
+        <div className="table-scroll">
+          <table className="ledger-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Why it arrives</th>
+                <th>Where it remains</th>
+                <th>Boundary</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receivedFields.map(([field, purpose, destination, boundary]) => (
+                <tr key={field}>
+                  <td data-label="Field">
+                    <code>{field}</code>
+                  </td>
+                  <td data-label="Why it arrives">{purpose}</td>
+                  <td data-label="Where it remains">{destination}</td>
+                  <td data-label="Boundary">{boundary}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="excluded-data" aria-labelledby="excluded-data-title">
+        <div>
+          <h2 id="excluded-data-title">Never collected</h2>
+          <p>These fields are absent from the SDK contract and rejected by the ingest validator.</p>
+        </div>
+        <ul>
+          {excludedFields.map((field) => (
+            <li key={field}>{field}</li>
+          ))}
+        </ul>
+      </section>
+
+      <p className="transparency-footnote">
+        Contract v1 is enforced by the ingest validator.{' '}
+        <a
+          href="https://github.com/sarthakagrawal927/app-health/blob/main/packages/contracts/src/event.ts"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Inspect the source contract
+        </a>
+        . Raw ingest keys are shown once; only a non-reversible verifier is stored. Batch IDs stop
+        participating in deduplication after one hour. Failure rows stop being queryable after 24
+        hours and are queued for hourly deletion.
+      </p>
+    </div>
+  );
+}
+
 function Dashboard({
   project,
   ownerToken,
@@ -483,6 +750,7 @@ function Dashboard({
   onReset: () => void;
   onLock: () => void;
 }): JSX.Element {
+  const [view, setView] = useState<DashboardView>('endpoints');
   const [windowKey, setWindowKey] = useState<Window>('15m');
   const [sortKey, setSortKey] = useState<SortKey>('health');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -573,157 +841,194 @@ function Dashboard({
         </div>
       </header>
       <main className="dashboard">
+        <nav className="view-tabs" aria-label="App Health views">
+          <button
+            aria-current={view === 'endpoints' ? 'page' : undefined}
+            onClick={() => setView('endpoints')}
+          >
+            Endpoints
+          </button>
+          <button
+            aria-current={view === 'data' ? 'page' : undefined}
+            onClick={() => setView('data')}
+          >
+            Data received
+          </button>
+        </nav>
         <div className="dashboard-heading">
           <div>
-            <div className="eyebrow">Observed routes</div>
-            <h1>Endpoint health</h1>
-            <p>Traffic, errors, and latency from requests your service actually handled.</p>
+            {view === 'endpoints' ? (
+              <>
+                <div className="eyebrow">Observed routes</div>
+                <h1>Endpoint health</h1>
+                <p>Traffic, errors, and latency from requests your service actually handled.</p>
+              </>
+            ) : (
+              <>
+                <div className="eyebrow">Collection transparency</div>
+                <h1>Data received</h1>
+                <p>The exact telemetry App Health accepts and retains for this environment.</p>
+              </>
+            )}
           </div>
-          <div className="window-control" aria-label="Time window">
-            {WINDOWS.map((value) => (
-              <button
-                key={value}
-                aria-pressed={windowKey === value}
-                onClick={() => setWindowKey(value)}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+          {view === 'endpoints' ? (
+            <div className="window-control" aria-label="Time window">
+              {WINDOWS.map((value) => (
+                <button
+                  key={value}
+                  aria-pressed={windowKey === value}
+                  onClick={() => setWindowKey(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
-        {error ? (
-          <section className="api-error" role="alert">
-            <div>
-              <strong>Can’t refresh endpoint data</strong>
-              <p>{error}. Your application is unaffected; the SDK fails open.</p>
-            </div>
-            <button className="secondary-button" onClick={() => window.location.reload()}>
-              Try again
-            </button>
-          </section>
-        ) : null}
-        {status ? <StatusBanner status={status} /> : null}
-        <section className="endpoint-surface" aria-busy={loading}>
-          <div className="surface-heading">
-            <div>
-              <h2>Endpoints</h2>
-              <span>{sorted.length} observed</span>
-            </div>
-            <label>
-              Sort by
-              <select
-                aria-label="Sort endpoints"
-                value={sortKey}
-                onChange={(event) => changeSort(event.target.value as SortKey)}
-              >
-                <option value="health">Health</option>
-                <option value="requests">Requests</option>
-                <option value="error_rate">Error rate</option>
-                <option value="p95">p95 latency</option>
-                <option value="last_seen">Last seen</option>
-              </select>
-            </label>
-          </div>
-          {loading && !data ? (
-            <div className="loading-state">
-              <span />
-              <span />
-              <span />
-            </div>
-          ) : null}
-          {!loading && !error && sorted.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-pulse">
-                <i />
+        {view === 'endpoints' ? (
+          <>
+            {error ? (
+              <section className="api-error" role="alert">
+                <div>
+                  <strong>Can’t refresh endpoint data</strong>
+                  <p>{error}. Your application is unaffected; the SDK fails open.</p>
+                </div>
+                <button className="secondary-button" onClick={() => window.location.reload()}>
+                  Try again
+                </button>
+              </section>
+            ) : null}
+            {status ? <StatusBanner status={status} /> : null}
+            <section className="endpoint-surface" aria-busy={loading}>
+              <div className="surface-heading">
+                <div>
+                  <h2>Endpoints</h2>
+                  <span>{sorted.length} observed</span>
+                </div>
+                <label>
+                  Sort by
+                  <select
+                    aria-label="Sort endpoints"
+                    value={sortKey}
+                    onChange={(event) => changeSort(event.target.value as SortKey)}
+                  >
+                    <option value="health">Health</option>
+                    <option value="requests">Requests</option>
+                    <option value="error_rate">Error rate</option>
+                    <option value="p95">p95 latency</option>
+                    <option value="last_seen">Last seen</option>
+                  </select>
+                </label>
               </div>
-              <h3>No endpoints observed yet</h3>
-              <p>
-                Start {project.name}, then make a request to any route. It will appear here within a
-                few seconds.
-              </p>
-              <code>curl http://localhost:3000/health</code>
-            </div>
-          ) : null}
-          {sorted.length > 0 ? (
-            <>
-              <div className="table-scroll">
-                <table className="endpoint-table">
-                  <thead>
-                    <tr>
-                      <th>Method</th>
-                      <th>Route</th>
-                      {(
-                        [
-                          ['requests', 'Requests'],
-                          ['error_rate', 'Error rate'],
-                          ['p95', 'p50'],
-                          ['p95', 'p95'],
-                          ['last_seen', 'Last seen'],
-                          ['health', 'Health'],
-                        ] as [SortKey, string][]
-                      ).map(([key, label]) => (
-                        <th key={`${key}-${label}`}>
-                          <button onClick={() => changeSort(key)}>
-                            {label}
-                            {sortKey === key ? (
-                              <span
-                                aria-label={sortDirection === 'desc' ? 'descending' : 'ascending'}
-                              >
-                                {sortDirection === 'desc' ? '↓' : '↑'}
-                              </span>
-                            ) : null}
-                          </button>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
+              {loading && !data ? (
+                <div className="loading-state">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
+              {!loading && !error && sorted.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-pulse">
+                    <i />
+                  </div>
+                  <h3>No endpoints observed yet</h3>
+                  <p>
+                    Start {project.name}, then make a request to any route. It will appear here
+                    within a few seconds.
+                  </p>
+                  <code>curl http://localhost:3000/health</code>
+                </div>
+              ) : null}
+              {sorted.length > 0 ? (
+                <>
+                  <div className="table-scroll">
+                    <table className="endpoint-table">
+                      <thead>
+                        <tr>
+                          <th>Method</th>
+                          <th>Route</th>
+                          {(
+                            [
+                              ['requests', 'Requests'],
+                              ['error_rate', 'Error rate'],
+                              ['p95', 'p50'],
+                              ['p95', 'p95'],
+                              ['last_seen', 'Last seen'],
+                              ['health', 'Health'],
+                            ] as [SortKey, string][]
+                          ).map(([key, label]) => (
+                            <th key={`${key}-${label}`}>
+                              <button onClick={() => changeSort(key)}>
+                                {label}
+                                {sortKey === key ? (
+                                  <span
+                                    aria-label={
+                                      sortDirection === 'desc' ? 'descending' : 'ascending'
+                                    }
+                                  >
+                                    {sortDirection === 'desc' ? '↓' : '↑'}
+                                  </span>
+                                ) : null}
+                              </button>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map((endpoint) => (
+                          <EndpointTableRow
+                            key={`${endpoint.method}|${endpoint.route}`}
+                            endpoint={endpoint}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="endpoint-cards">
                     {sorted.map((endpoint) => (
-                      <EndpointTableRow
+                      <EndpointCard
                         key={`${endpoint.method}|${endpoint.route}`}
                         endpoint={endpoint}
                       />
                     ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="endpoint-cards">
-                {sorted.map((endpoint) => (
-                  <EndpointCard key={`${endpoint.method}|${endpoint.route}`} endpoint={endpoint} />
-                ))}
-              </div>
-            </>
-          ) : null}
-        </section>
-        <section className="threshold-note">
-          <strong>How health is decided</strong>
-          <p>
-            <span className="dot healthy" />
-            Healthy{' '}
-            <b>
-              under {DEGRADED_ERROR_RATE * 100}% errors &amp; {DEGRADED_P95_MS / 1000}s p95
-            </b>
-            <span className="dot degraded" />
-            Degraded{' '}
-            <b>
-              ≥{DEGRADED_ERROR_RATE * 100}% errors or {DEGRADED_P95_MS / 1000}s p95
-            </b>
-            <span className="dot unhealthy" />
-            Unhealthy{' '}
-            <b>
-              ≥{UNHEALTHY_ERROR_RATE * 100}% errors or {UNHEALTHY_P95_MS / 1000}s p95
-            </b>
-            <span className="dot low" />
-            Low volume <b>under {INSUFFICIENT_DATA_MIN_REQUESTS} requests</b>
-          </p>
-        </section>
-        <footer>
-          <span>Updated {data ? formatAge(data.refreshed_at) : '—'}</span>
-          <span>
-            Percentiles are approximate · only aggregate route metrics are stored · no headers,
-            bodies, or identities
-          </span>
-        </footer>
+                  </div>
+                </>
+              ) : null}
+            </section>
+            <section className="threshold-note">
+              <strong>How health is decided</strong>
+              <p>
+                <span className="dot healthy" />
+                Healthy{' '}
+                <b>
+                  under {DEGRADED_ERROR_RATE * 100}% errors &amp; {DEGRADED_P95_MS / 1000}s p95
+                </b>
+                <span className="dot degraded" />
+                Degraded{' '}
+                <b>
+                  ≥{DEGRADED_ERROR_RATE * 100}% errors or {DEGRADED_P95_MS / 1000}s p95
+                </b>
+                <span className="dot unhealthy" />
+                Unhealthy{' '}
+                <b>
+                  ≥{UNHEALTHY_ERROR_RATE * 100}% errors or {UNHEALTHY_P95_MS / 1000}s p95
+                </b>
+                <span className="dot low" />
+                Low volume <b>under {INSUFFICIENT_DATA_MIN_REQUESTS} requests</b>
+              </p>
+            </section>
+            <footer>
+              <span>Updated {data ? formatAge(data.refreshed_at) : '—'}</span>
+              <span>
+                Percentiles are approximate · only aggregate route metrics are stored · no headers,
+                bodies, or identities
+              </span>
+            </footer>
+          </>
+        ) : (
+          <DataReceived project={project} ownerToken={ownerToken} />
+        )}
       </main>
     </div>
   );

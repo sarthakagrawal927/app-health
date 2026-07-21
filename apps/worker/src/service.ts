@@ -6,6 +6,8 @@
 import {
   BUCKET_MS,
   CreateAppRequestV1,
+  FAILURE_RETENTION_HOURS,
+  FailureQueryResponseV1,
   InstallationStatusV1,
   MAX_CLOCK_SKEW_MS,
   WINDOW_MS,
@@ -17,6 +19,7 @@ import {
   type EndpointQueryResponseV1,
   type EventBatchV1,
   type EventV1,
+  type FailureQueryResponseV1 as FailureQueryResponse,
   type KeyRecordV1,
   type ListAppsResponseV1,
   type Window,
@@ -226,6 +229,28 @@ export class AppHealthService {
       window,
       endpoints,
     };
+  }
+
+  /** Query the latest retained 4xx/5xx details for one app environment. */
+  async queryFailures(
+    appId: string,
+    envId: string,
+    limit: number,
+    now: number,
+  ): Promise<FailureQueryResponse> {
+    const failures =
+      (await this.repos.failures?.listFailures(
+        appId,
+        envId,
+        now - FAILURE_RETENTION_HOURS * 60 * 60 * 1000,
+        limit,
+      )) ?? [];
+    return FailureQueryResponseV1.parse({
+      refreshed_at: now,
+      retention_hours: FAILURE_RETENTION_HOURS,
+      limit,
+      failures,
+    });
   }
 }
 

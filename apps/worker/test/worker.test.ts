@@ -129,6 +129,15 @@ describe('worker owner APIs fail closed outside local mode', () => {
     expect(res.status).toBe(503);
   });
 
+  it('rejects /v1/failures outside local mode', async () => {
+    const res = await call(
+      'GET',
+      `/v1/failures?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}`,
+      NON_LOCAL_ENV,
+    );
+    expect(res.status).toBe(503);
+  });
+
   it('rejects ingest outside local mode', async () => {
     const res = await call(
       'POST',
@@ -328,6 +337,32 @@ describe('worker local mode', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { endpoints: { method: string; route: string }[] };
     expect(body.endpoints.length).toBeGreaterThan(0);
+  });
+
+  it('returns an owner-scoped bounded failure response', async () => {
+    const res = await call(
+      'GET',
+      `/v1/failures?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&limit=25`,
+      LOCAL_ENV,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      retention_hours: number;
+      limit: number;
+      failures: unknown[];
+    };
+    expect(body).toMatchObject({ retention_hours: 24, limit: 25 });
+    expect(Array.isArray(body.failures)).toBe(true);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('rejects an unbounded failure query', async () => {
+    const res = await call(
+      'GET',
+      `/v1/failures?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&limit=1000`,
+      LOCAL_ENV,
+    );
+    expect(res.status).toBe(400);
   });
 
   it('rejects an unsupported window', async () => {

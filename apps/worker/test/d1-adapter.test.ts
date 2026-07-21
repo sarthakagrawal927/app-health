@@ -169,4 +169,26 @@ describe('D1 control plane', () => {
     ]);
     expect(db.statements.at(-1)?.values).toEqual(['app-1', 'env-1']);
   });
+
+  it('lists only scoped recent failures with a server-provided bound', async () => {
+    const db = new Database();
+    db.allResults.push([
+      {
+        failure_id: 'failure-1',
+        method: 'POST',
+        route: '/orders/:id',
+        status_code: 503,
+        duration_ms: 912,
+        occurred_at: 200,
+        release: '2026.07.22',
+      },
+    ]);
+    const failures = await new D1ControlPlane(db).listFailures('app-1', 'env-1', 100, 50);
+    expect(failures).toHaveLength(1);
+    expect(db.statements[0].sql).toContain('FROM failure_events');
+    expect(db.statements[0].sql).toContain('app_id = ? AND environment_id = ?');
+    expect(db.statements[0].sql).toContain('occurred_at >= ?');
+    expect(db.statements[0].sql).not.toMatch(/headers|query|body|identity/);
+    expect(db.statements[0].values).toEqual(['app-1', 'env-1', 100, 50]);
+  });
 });
