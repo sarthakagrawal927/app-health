@@ -4,8 +4,8 @@ github.com/labstack/echo/v5 v5.1.1 h1:4QkvKoS8ps5ch49t8b72QS9Z581ytgxhTzxuB/CBA2
 github.com/labstack/echo/v5 v5.1.1/go.mod h1:SyvlSdObGjRXeQfCCXW/sybkZdOOQZBmpKF0bvALaeo=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/sarthakagrawal927/app-health/packages/go v0.1.0 h1:2nqxd0grpo/ZhDidom+M9La9bDlMpaKXMYNdOBV9lD0=
-github.com/sarthakagrawal927/app-health/packages/go v0.1.0/go.mod h1:BGA+hlWR06aUj/pS4q5zAyZJsP2itoqudhYDQ2DYNjk=
+github.com/sarthakagrawal927/app-health/packages/go v0.1.1 h1:z4ULPpBuowQuhGgWEK+2Pacrshd9W2b5+9HwsezNgrs=
+github.com/sarthakagrawal927/app-health/packages/go v0.1.1/go.mod h1:BGA+hlWR06aUj/pS4q5zAyZJsP2itoqudhYDQ2DYNjk=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 golang.org/x/net v0.49.0 h1:eeHFmOGUTtaaPSGNmjBKpbng9MulQsJURQUAfUwY++o=
