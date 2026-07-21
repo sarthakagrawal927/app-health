@@ -29,6 +29,6 @@
 - [x] 4.2 Add Analytics Engine tests for privacy exclusions, point aggregation and limits, fixed SQL, sampling weights, histogram merging, and app-environment isolation
 - [x] 4.3 Add owner-secret and routing tests for invalid credentials, absent identity, ingest without owner credentials, direct-host bypass, body limits, no-store responses, missing bindings, and browser non-persistence
 - [x] 4.4 Run the full TypeScript and Go checks plus strict OpenSpec validation and update PROJECT_STATUS.md with the verified production-readiness state
-- [ ] 4.5 With explicit deployment approval, provision the approved Cloudflare bindings and routes without committing secret values
-- [ ] 4.6 Run and record the production canary for app creation, one-time key handoff, Node ingest, Go ingest, connected state, endpoint summaries, and prohibited-data absence
+- [x] 4.5 With explicit deployment approval, provision the approved Cloudflare bindings and routes without committing secret values
+- [x] 4.6 Run and record the production canary for app creation, one-time key handoff, Node ingest, Go ingest, connected state, endpoint summaries, and prohibited-data absence
 - [x] 4.7 Add migration, adapter, service, and UI tests proving sampled-out endpoints remain visible and prohibited event fields remain absent

@@ -16,7 +16,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 
 ### External
 
-- Cloudflare Worker, D1 control-plane plus normalized endpoint inventory, Workers Analytics Engine telemetry, and a dedicated single-owner Worker secret are the production architecture. The Worker, APAC D1 resource, secrets, and both custom hostnames are live on the existing Workers subscription; corrected canary acceptance is in progress. No additional Cloudflare subscription is approved.
+- Cloudflare Worker, D1 control-plane plus normalized endpoint inventory, Workers Analytics Engine telemetry, and a dedicated single-owner Worker secret are the production architecture. The Worker, APAC D1 resource, secrets, both custom hostnames, and corrected Node/Go canary are live on the existing Workers subscription. No additional Cloudflare subscription is approved.
 - Node 20+ with Express and Go 1.22+ with `net/http` are the supported V0 runtime surfaces.
 
 ### Internal
@@ -37,6 +37,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-21 — rejected Zero Trust activation because its free checkout required standing overage authorization; replaced Access with a timing-safe owner Worker secret and an in-memory-only dashboard unlock flow so the release adds no Cloudflare subscription
 - 2026-07-21 — deployed the Worker, D1 schema, owner/query secrets, and `health.sassmaker.com` plus `ingest.sassmaker.com`; Node and Go canaries connected successfully and exposed an Analytics Engine sampling edge where rare endpoint identities could disappear
 - 2026-07-21 — added a privacy-bounded normalized D1 endpoint inventory and explicit sampled-metrics UI so every accepted endpoint remains visible without inventing zero values
+- 2026-07-21 — applied the additive production migration and deployed Worker version `81eae678-6774-4229-9136-064e7ff3ecb5`; the corrected canary sent three Node and four Go events with no delivery failures, reached connected state, and returned all five observed routes
 
 ## Products
 
@@ -55,8 +56,7 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 ## Todo / Planned / Deferred / Blocked
 
 1. **Deferred:** the broader owner-first Problem workflow in `build-app-health-mvp` until the endpoint V0 earns expansion.
-2. **Production correction:** apply the additive normalized endpoint-inventory migration, deploy the sampled-metric fallback, and rerun the real Node/Go canary.
-3. **Verification:** the injected-failure D1, owner identity, host-boundary,
+2. **Verification:** the injected-failure D1, owner identity, host-boundary,
    ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
-   and browser non-persistence matrices are covered locally. The corrected live
-   endpoint inventory is the only open production acceptance item.
+   and browser non-persistence matrices are covered locally. The live dashboard
+   is connected and the production endpoint inventory is accepted.

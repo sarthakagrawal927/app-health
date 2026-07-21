@@ -7,29 +7,36 @@ Define minimal local app creation, scoped ingest-key lifecycle, and installation
 ## Requirements
 
 ### Requirement: Minimal app creation
-The system SHALL let the local V0 operator create an app name and environment without observability configuration and SHALL produce one ingest key.
+The system SHALL let the authenticated single operator create an app name and environment without observability configuration, SHALL durably create the records as one transaction, and SHALL produce one ingest key.
 
 #### Scenario: Operator creates an app
-- **WHEN** the operator submits a valid app name and environment
-- **THEN** the system creates the scoped app and shows the new ingest key exactly once
+- **WHEN** the authenticated operator submits a valid app name and environment
+- **THEN** the system durably creates the scoped app and shows the new ingest key exactly once
 
 ### Requirement: Safe ingest keys
-The system SHALL store only a non-reversible key verifier, scope a key to one app and environment, and support revocation.
+The system SHALL store only a SHA-256 key verifier in D1, scope a key to one app and environment, return the raw key only in the no-store creation response, and support revocation.
 
 #### Scenario: Revoked key sends telemetry
 - **WHEN** ingest receives a batch using a revoked key
-- **THEN** it rejects the batch and updates no aggregate
+- **THEN** it rejects the batch and writes no D1 or Analytics Engine telemetry
 
 ### Requirement: Installation verification
-The setup view SHALL report whether a valid event has been received for the key and SHALL identify the runtime, environment, first seen, and last seen when available.
+The setup view SHALL durably report whether a valid event has been received for the selected app and environment and SHALL identify the runtime, environment, first seen, and last seen when available.
 
 #### Scenario: First valid batch arrives
 - **WHEN** the first Node or Go batch for a new key is accepted
 - **THEN** setup changes from waiting for traffic to connected within 30 seconds
 
 ### Requirement: Owner API fails closed outside local mode
-The system SHALL require a configured owner identity outside explicitly marked local development mode.
+The system SHALL require a valid dedicated owner bearer secret outside explicitly marked local development mode.
 
 #### Scenario: Non-local identity is missing
-- **WHEN** an owner API request runs outside local mode without an identity adapter
+- **WHEN** an owner API request runs outside local mode without the valid owner secret
 - **THEN** the request is rejected and no app or key is created
+
+### Requirement: Existing apps survive a new browser session
+The authenticated operator SHALL be able to list and select existing apps and environments without relying on browser-local persistence.
+
+#### Scenario: Operator returns in a fresh browser session
+- **WHEN** the authenticated operator opens the dashboard after prior setup
+- **THEN** the durable apps and environments are available for selection without reissuing a key
