@@ -13,19 +13,26 @@ Ingest SHALL verify the environment-scoped key against its D1 SHA-256 verifier, 
 - **WHEN** canonical Node and Go fixtures carry equivalent endpoint summaries
 - **THEN** ingest validates both into the same internal event shape
 
-### Requirement: Idempotent event processing
-Ingest SHALL deduplicate retried event identifiers in D1 for a bounded window so a retry does not increase Analytics Engine metrics twice.
+### Requirement: Idempotent batch processing
+Ingest SHALL deduplicate a retry-stable batch identifier in D1 for a bounded window so retrying a batch does not increase Analytics Engine metrics twice. D1 SHALL store at most one dedupe row per accepted batch, not per event.
 
 #### Scenario: SDK retries a batch
-- **WHEN** the same valid event ID is accepted twice within the deduplication window
-- **THEN** Analytics Engine request and latency counts increase only once
+- **WHEN** the same valid batch ID is accepted twice within the deduplication window
+- **THEN** Analytics Engine counts increase once and D1 contains one dedupe row
 
 ### Requirement: Aggregate-only storage
-The system SHALL aggregate equivalent validated events in memory and write only method, normalized route, fixed latency bucket, runtime, optional release, request count, error count, duration sum, and maximum event timestamp to Workers Analytics Engine. D1 SHALL retain only a deduplicated observed-endpoint identity consisting of app, environment, method, normalized route, first seen, and last seen. It SHALL NOT durably store raw request events, status, duration, histograms, request content, concrete paths, headers, query values, or identity.
+The system SHALL aggregate equivalent validated events in memory and write only aggregate-safe points to Workers Analytics Engine. D1 SHALL retain control-plane records, unique normalized endpoint identities, and short-lived batch IDs only; it SHALL NOT retain one row per request event.
 
-#### Scenario: Valid event is processed
-- **WHEN** an endpoint summary passes authentication, validation, and deduplication
-- **THEN** an aggregate-safe Analytics Engine point is written and D1 upserts only the normalized endpoint identity and first/last seen timestamps
+#### Scenario: One hundred events arrive in one batch
+- **WHEN** the batch passes authentication, validation, and deduplication
+- **THEN** D1 creates one temporary dedupe row regardless of event count
+
+### Requirement: Bounded failure detail
+Ingest SHALL retain one parameter-free detail row for every 4xx/5xx event for 24 hours while 2xx/3xx events remain aggregate-only. Every status SHALL still contribute to request counts and fixed latency histograms used for pXX estimates.
+
+#### Scenario: Mixed-status batch is accepted
+- **WHEN** one batch contains 2xx, 4xx, and 5xx events
+- **THEN** all events affect aggregates and only 4xx/5xx events create detail rows
 
 ### Requirement: Correct window merging
 The query layer SHALL use fixed allowlisted Analytics Engine SQL, weight sampled counts by `_sample_interval`, and merge fixed histogram buckets to compute request count, error rate, approximate p50 and p95 latency, and last seen for 15-minute, 1-hour, and 24-hour windows.
