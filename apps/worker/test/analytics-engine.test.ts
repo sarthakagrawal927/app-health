@@ -48,6 +48,7 @@ describe('Analytics Engine telemetry adapter', () => {
     expect(sql).toContain('app_health_endpoint_v1');
     expect(sql).toContain('_sample_interval');
     expect(sql).toContain(await telemetryScope('app-a', 'env-a'));
+    expect(sql).toContain("blob5 != 'polaris-staging-canary'");
     expect(sql).not.toContain('app-a');
   });
 
