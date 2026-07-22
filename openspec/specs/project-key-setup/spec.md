@@ -21,11 +21,15 @@ The system SHALL store only a SHA-256 key verifier in D1, scope a key to one app
 - **THEN** it rejects the batch and writes no D1 or Analytics Engine telemetry
 
 ### Requirement: Installation verification
-The setup view SHALL durably report whether a valid event has been received for the selected app and environment and SHALL identify the runtime, environment, first seen, and last seen when available.
+The setup view SHALL durably report whether valid SDK endpoint events or eligible OTel server spans have been received for the selected app and environment and SHALL identify the runtime, environment, first seen, and last seen when available.
 
-#### Scenario: First valid batch arrives
+#### Scenario: First valid SDK batch arrives
 - **WHEN** the first Node or Go batch for a new key is accepted
 - **THEN** setup changes from waiting for traffic to connected within 30 seconds
+
+#### Scenario: First valid OTLP export arrives
+- **WHEN** the first eligible OTel server span for a new key is accepted
+- **THEN** setup changes from waiting for traffic to an OpenTelemetry connected state within 30 seconds
 
 ### Requirement: Owner API fails closed outside local mode
 The system SHALL require a valid dedicated owner bearer secret outside explicitly marked local development mode.

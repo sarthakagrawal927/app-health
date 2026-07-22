@@ -1,4 +1,4 @@
-> **Deferred roadmap:** Do not apply these tasks during V0. The active implementation checklist is `../build-endpoint-health-v0/tasks.md`.
+> **Superseded roadmap:** Archived on 2026-07-22 without implementation. Every unchecked task below remains explicitly deferred outside endpoint-health V0 and MUST NOT be interpreted as shipped behavior.
 
 ## 1. Foundation — reviewed baseline (Wave 0, one agent)
 

@@ -46,11 +46,15 @@ The dashboard SHALL distinguish no traffic yet, stale traffic, invalid or revoke
 - **THEN** the page shows the install snippet and a waiting-for-traffic state rather than an empty healthy table
 
 ### Requirement: Production SDK snippets use the ingest origin
-The setup view SHALL render Node and Go snippets with the configured production ingest origin and the one-time key without persisting the raw key in browser storage or analytics.
+The setup view SHALL render copy-ready Express and Echo installation snippets with their public package paths, the configured production ingest origin, and the one-time key without persisting the raw key in browser storage or analytics.
 
 #### Scenario: Operator creates a production app
 - **WHEN** the creation response returns the one-time key
-- **THEN** the visible snippets target the configured ingest origin and the key disappears after the one-time setup state is left
+- **THEN** the visible Express and Echo snippets target the configured ingest origin and the key disappears after the one-time setup state is left
+
+#### Scenario: Operator switches framework snippet
+- **WHEN** the operator selects Express or Echo
+- **THEN** the dashboard shows only the verified install and middleware code for that framework
 
 ### Requirement: Polished responsive presentation
 The dashboard SHALL use a cohesive visual system, accessible contrast and focus states, clear information hierarchy, and intentional responsive layouts for setup, waiting, populated, stale, and error states.
@@ -65,3 +69,17 @@ The implementation SHALL produce browser-verified desktop and mobile screenshots
 #### Scenario: Dashboard work is submitted for review
 - **WHEN** the dashboard agent reports its work complete
 - **THEN** six current screenshots cover the three required states at desktop and mobile widths
+
+### Requirement: Existing OpenTelemetry setup path
+The one-time setup view SHALL offer an Existing OpenTelemetry path that renders a copy-ready standard Collector OTLP/HTTP exporter configuration using the configured ingest origin and visible environment key, without requiring an App Health SDK or custom Collector plugin.
+
+#### Scenario: Operator selects OpenTelemetry
+- **WHEN** the one-time ingest key is visible and the operator selects Existing OpenTelemetry
+- **THEN** the setup view shows an additive Collector exporter and traces-pipeline example targeting the App Health OTLP endpoint
+
+### Requirement: Upstream sampling disclosure
+Endpoint rows and cards SHALL visibly label trace-derived request counts, error rates, percentiles, and health states as sampled estimates rather than exact values.
+
+#### Scenario: Endpoint includes OTel trace contributions
+- **WHEN** the endpoint API returns `upstream_sampled: true`
+- **THEN** desktop and mobile endpoint presentations disclose that the metrics and health assessment are based on sampled traces

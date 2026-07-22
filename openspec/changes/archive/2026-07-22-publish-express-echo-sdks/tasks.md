@@ -23,6 +23,6 @@
 ## 4. Verification and release
 
 - [x] 4.1 Run formatting, lint, TypeScript checks, Node package consumer tests, Go tests/vet, SDK benchmarks, and strict OpenSpec validation
-- [ ] 4.2 Commit and push the exact green change, wait for matching CI, run the deploy guard, deploy the setup UI, and smoke both live snippets
-- [ ] 4.3 Run the guarded npm publication and Go submodule tag steps only if their authentication and repository prerequisites pass; otherwise record the exact external gate without claiming publication
-- [ ] 4.4 Sync canonical specs, archive the completed OpenSpec change, and leave `main` clean and synchronized
+- [x] 4.2 Commit and push the exact green change, wait for matching CI, run the deploy guard, deploy the setup UI, and smoke both live snippets
+- [x] 4.3 Run the guarded npm publication and Go submodule tag steps only if their authentication and repository prerequisites pass; otherwise record the exact external gate without claiming publication
+- [x] 4.4 Sync canonical specs, archive the completed OpenSpec change, and leave `main` clean and synchronized

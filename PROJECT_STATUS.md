@@ -43,6 +43,7 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 - 2026-07-22 — added an owner-authenticated, bounded recent-failure read path and a trust-focused Data received dashboard that shows retained failures, the exact accepted field contract, aggregate-only boundaries, and data that is never collected; responsive and accessibility review passes completed
 - 2026-07-21 — hardened SDK string privacy so official adapters never send unmatched concrete paths and unsafe release strings are omitted; added Go 1.22 ServeMux pattern resolution, optimized UUID generation, and measured approximately 1.7 microseconds serial / 0.04 microseconds 8-way parallel incremental Echo overhead
 - 2026-07-22 — added authenticated OTLP/HTTP protobuf and JSON ingestion for existing OpenTelemetry pipelines, strict server-span projection, retry-stable deduplication, sampling provenance, Collector onboarding, and sampled-estimate disclosure
+- 2026-07-22 — merged release PR #11 after matching TypeScript and Go CI, deployed Worker version `5b2cbee1-74e9-4eb8-a818-c7a2aa2edd37`, verified both custom domains and OTLP host/auth boundaries, and published Go core `v0.1.5`
 
 ## Products
 
@@ -64,7 +65,8 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 ## Todo / Planned / Deferred / Blocked
 
 1. **Deferred:** the broader owner-first Problem workflow remains outside V0 until endpoint health earns expansion; its superseded planning change is archived rather than presented as active work.
-2. **Verification:** the injected-failure D1, owner identity, host-boundary,
+2. **Blocked:** npm publication of `@saas-maker/app-health@0.1.0` remains externally gated because the configured registry identity returns `E401 Unauthorized`; the packed ESM/CommonJS artifact is verified, but no npm release is claimed.
+3. **Verification:** the injected-failure D1, owner identity, host-boundary,
    ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
    and browser non-persistence matrices are covered locally. The live dashboard
    is connected and the production endpoint inventory is accepted.
