@@ -110,7 +110,10 @@ export class AnalyticsEngineBuckets implements BucketRepository {
   async queryBuckets(appId: string, envId: string, from: number, to: number): Promise<BucketV1[]> {
     const window = windowFor(to - from);
     const scope = await telemetryScope(appId, envId);
-    const sql = `SELECT blob1 AS method, blob2 AS route, blob3 AS latency_bucket, SUM(double1 * _sample_interval) AS request_count, SUM(double2 * _sample_interval) AS error_count, SUM(double3 * _sample_interval) AS duration_sum_ms, MAX(double4) AS last_seen FROM ${DATASET} WHERE index1 = '${scope}' AND timestamp >= NOW() - ${INTERVALS[window]} GROUP BY method, route, latency_bucket ORDER BY method, route, latency_bucket`;
+    // Analytics Engine is append-only. This exact release was a manually
+    // injected connectivity check, not application traffic, so query-tombstone
+    // it after its durable D1 inventory and installation state are removed.
+    const sql = `SELECT blob1 AS method, blob2 AS route, blob3 AS latency_bucket, SUM(double1 * _sample_interval) AS request_count, SUM(double2 * _sample_interval) AS error_count, SUM(double3 * _sample_interval) AS duration_sum_ms, MAX(double4) AS last_seen FROM ${DATASET} WHERE index1 = '${scope}' AND blob5 != 'polaris-staging-canary' AND timestamp >= NOW() - ${INTERVALS[window]} GROUP BY method, route, latency_bucket ORDER BY method, route, latency_bucket`;
     const rows = await this.query(sql);
     const grouped = new Map<string, BucketV1>();
     for (const row of rows) {
