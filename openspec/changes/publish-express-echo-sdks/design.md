@@ -18,7 +18,7 @@ or copy-pasted instrumentation.
   publisher scope.
 - Keep the Node core independent from Express and expose Express through a
   dedicated subpath.
-- Give the Go module a real repository path and add an Echo v4 middleware that
+- Give the Go module a real repository path and add an Echo v5 middleware that
   records `Context.Path()` after routing.
 - Preserve the existing privacy boundary, asynchronous fail-open delivery,
   bounded queues, retries, diagnostics, flush, and shutdown behavior.
@@ -56,7 +56,7 @@ surface that can drift.
 
 The module path becomes
 `github.com/sarthakagrawal927/app-health/packages/go`. The Echo adapter lives at
-the `/echo` package path and imports Echo v4. Core delivery remains written
+the `/echo/v5` package path and imports Echo v5. Core delivery remains written
 against the standard library. Go consumers of the private repository use
 normal `GOPRIVATE` and GitHub authentication until repository visibility is
 separately changed.
@@ -69,6 +69,21 @@ responses or `echo.HTTPError`, records panic as 500, and re-panics unchanged.
 Alternative: wrap only Echo's `http.Handler`. Rejected because the standard
 request does not reliably expose Echo's matched template and would silently
 fall back to high-cardinality concrete paths.
+
+### Keep the app-facing Echo contract explicit and tiny
+
+Echo consumers install telemetry with one `Install` call and a config containing
+only `Enabled`, `Environment`, `Key`, and `Project`. `Enabled` is supplied by the
+application, so the SDK does not impose process-variable names or environment
+matching policy. The production ingest endpoint, bounded queue, batching,
+timeouts, retries, privacy filtering, and graceful flush remain SDK defaults.
+
+An absent key or disabled config is a no-op. This preserves fail-open startup
+while making every activation input visible at the call site.
+
+Alternative: `InstallFromEnvironment` with fixed `APP_HEALTH_*` names. Rejected
+because it hides the real contract, couples applications to SDK-owned variable
+names, and makes a three-line integration harder to audit.
 
 ### Releases remain explicit and guarded
 

@@ -1,51 +1,38 @@
 # App Health for Go
 
 The Go 1.22+ SDK records privacy-safe endpoint summaries through a bounded,
-asynchronous, fail-open client. It supports `net/http` directly and Echo v4
+asynchronous, fail-open client. It supports `net/http` directly and Echo v5
 through a dedicated adapter.
 
-The repository is private. Configure the module as private and ensure GitHub
-authentication works on the machine before installing:
-
 ```bash
-go env -w GOPRIVATE=github.com/sarthakagrawal927/app-health
-go get github.com/sarthakagrawal927/app-health/packages/go@v0.1.0
+go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0
 ```
 
 ## Echo
 
 ```go
 import (
-	"context"
-	"time"
+	"os"
 
-	"github.com/labstack/echo/v4"
-	apphealth "github.com/sarthakagrawal927/app-health/packages/go"
-	apphealthecho "github.com/sarthakagrawal927/app-health/packages/go/echo"
+	"github.com/labstack/echo/v5"
+	apphealthechov5 "github.com/sarthakagrawal927/app-health/packages/go/echo/v5"
 )
 
-client := apphealth.New(apphealth.Config{
-	IngestKey: os.Getenv("APP_HEALTH_INGEST_KEY"),
-	IngestURL: "https://ingest.sassmaker.com/v1/ingest",
-	Release:   os.Getenv("APP_VERSION"),
-})
-
 e := echo.New()
-e.Use(apphealthecho.Middleware(client))
-
-defer func() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = client.Close(ctx)
-}()
+cleanup := apphealthechov5.Install(e, apphealthechov5.Config{
+	Enabled:     true,
+	Environment: "staging",
+	Key:         os.Getenv("APP_HEALTH_INGEST_KEY"),
+	Project:     "orders-api",
+})
+defer cleanup()
 ```
 
 The adapter uses `echo.Context.Path()` after routing, so `/users/alice` and
 `/users/bob` are both recorded as `/users/:id`. It preserves committed
 responses, returned `echo.HTTPError` values, and panics.
 
-Use `client.Stats()` for local queued, sent, failed, retry, and drop counters.
-The SDK never reads headers, query values, route parameters, bodies, cookies,
-or identity. Echo v5 applications use the separate module
-`github.com/sarthakagrawal927/app-health/packages/go/echo/v5`; unmatched
-concrete paths are dropped rather than sent.
+The installer owns the ingest endpoint, queue, batching, retries, privacy
+filtering, and bounded shutdown. It is a no-op when `Enabled` is false or `Key`
+is empty. The SDK never reads headers, query values, route parameters, bodies,
+cookies, or identity; unmatched concrete paths are dropped rather than sent.

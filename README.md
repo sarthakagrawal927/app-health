@@ -99,26 +99,26 @@ await appHealth.close();
 
 ### Echo on Go 1.22+
 
-The GitHub repository is private, so the consuming machine must be able to
-authenticate to GitHub:
-
 ```bash
-go env -w GOPRIVATE=github.com/sarthakagrawal927/app-health
-go get github.com/sarthakagrawal927/app-health/packages/go@v0.1.0
+go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0
 ```
 
 ```go
-client := apphealth.New(apphealth.Config{
-	IngestKey: os.Getenv("APP_HEALTH_INGEST_KEY"),
-	IngestURL: "https://ingest.sassmaker.com/v1/ingest",
+cleanup := apphealthechov5.Install(e, apphealthechov5.Config{
+	Enabled:     true,
+	Environment: "staging",
+	Key:         os.Getenv("APP_HEALTH_INGEST_KEY"),
+	Project:     "orders-api",
 })
-e.Use(apphealthecho.Middleware(client))
+defer cleanup()
 ```
 
-Call `client.Close` with a bounded context during graceful shutdown. Use
-`client.Stats()` or `appHealth.diagnostics()` for local delivery counters.
+The Echo installer owns the production ingest endpoint, batching, retries,
+privacy filtering, and bounded shutdown. Set `Enabled` from application policy;
+an empty key or disabled config is a no-op. Use `appHealth.diagnostics()` for
+Node delivery counters.
 Complete runnable examples live in `examples/go-echo` and `examples/node`.
-The Echo example intentionally consumes the tagged `v0.1.0` module without a
+The Echo example intentionally consumes a tagged module without a
 local `replace`, so it also acts as a release-distribution canary.
 
 ## SDK release procedure
@@ -130,8 +130,8 @@ pnpm --filter @saas-maker/app-health run pack:verify
 npm whoami
 npm publish packages/node --access public
 
-git tag packages/go/v0.1.0
-git push origin packages/go/v0.1.0
+git tag packages/go/echo/v5.1.0
+git push origin packages/go/echo/v5.1.0
 ```
 
 Only publish or tag the exact pushed commit after repository and consumer

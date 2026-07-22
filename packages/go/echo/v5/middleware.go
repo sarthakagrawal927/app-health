@@ -5,20 +5,37 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
 	apphealth "github.com/sarthakagrawal927/app-health/packages/go"
 )
 
-// InstallFromEnvironment installs App Health only when the explicit enabled
-// flag, required environment, and ingest key all allow it. The returned
-// cleanup function flushes pending events and is safe to defer.
-func InstallFromEnvironment(e *echo.Echo, project, requiredEnvironment string) func() {
-	client := apphealth.NewFromEnvironment(project, requiredEnvironment, "")
-	if client == nil {
+var ingestURL = apphealth.DefaultIngestURL
+
+// Config contains the application-owned inputs for App Health. Delivery,
+// batching, retries, privacy filtering, and shutdown use SDK-owned defaults.
+type Config struct {
+	Enabled     bool
+	Environment string
+	Key         string
+	Project     string
+}
+
+// Install attaches App Health when enabled and a key is present. The returned
+// cleanup function flushes pending events and is always safe to defer.
+func Install(e *echo.Echo, cfg Config) func() {
+	key := strings.TrimSpace(cfg.Key)
+	if !cfg.Enabled || key == "" {
 		return func() {}
 	}
+	client := apphealth.New(apphealth.Config{
+		IngestURL:   ingestURL,
+		IngestKey:   key,
+		Project:     strings.TrimSpace(cfg.Project),
+		Environment: strings.TrimSpace(cfg.Environment),
+	})
 	e.Use(Middleware(client))
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

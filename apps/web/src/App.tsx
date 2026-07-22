@@ -310,7 +310,7 @@ function KeySetup({
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
   const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
-  const echoSnippet = `go env -w GOPRIVATE=github.com/sarthakagrawal927/app-health\ngo get github.com/sarthakagrawal927/app-health/packages/go@v0.1.0\n\nclient := apphealth.New(apphealth.Config{\n  IngestKey: "${key}",\n  IngestURL: "${INGEST_ORIGIN}/v1/ingest",\n})\ne.Use(apphealthecho.Middleware(client))`;
+  const echoSnippet = `go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0\n\nimport apphealthechov5 "github.com/sarthakagrawal927/app-health/packages/go/echo/v5"\n\ncleanup := apphealthechov5.Install(e, apphealthechov5.Config{\n  Enabled: true,\n  Environment: ${JSON.stringify(created.environment.name)},\n  Key: ${JSON.stringify(key)},\n  Project: ${JSON.stringify(created.app.name)},\n})\ndefer cleanup()`;
   const snippet = runtime === 'express' ? expressSnippet : echoSnippet;
 
   async function copy(value: string, label: string): Promise<void> {

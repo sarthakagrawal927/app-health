@@ -11,6 +11,7 @@
 - [x] 2.2 Add a validated non-blocking public record operation for framework adapters
 - [x] 2.3 Implement Echo v4 middleware with exact route templates, final statuses, error and panic preservation, and no sensitive capture
 - [x] 2.4 Add Echo integration, privacy, outage, and response-preservation tests plus an Echo example
+- [x] 2.5 Replace implicit environment installation with the explicit four-field Echo config, update consumer snippets, and prove enabled and disabled behavior
 
 ## 3. Setup experience and documentation
 
