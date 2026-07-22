@@ -2,9 +2,10 @@ package apphealth
 
 import (
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 )
+
+const lowercaseHex = "0123456789abcdef"
 
 // newEventID returns a random RFC 4122 v4 UUID string. It panics only if the
 // system CSPRNG is unavailable, which is a fatal environment error rather than
@@ -17,11 +18,19 @@ func newEventID() string {
 	// Version 4, variant RFC 4122.
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%s-%s-%s-%s-%s",
-		hex.EncodeToString(b[0:4]),
-		hex.EncodeToString(b[4:6]),
-		hex.EncodeToString(b[6:8]),
-		hex.EncodeToString(b[8:10]),
-		hex.EncodeToString(b[10:16]),
-	)
+	var encoded [36]byte
+	encoded[8] = '-'
+	encoded[13] = '-'
+	encoded[18] = '-'
+	encoded[23] = '-'
+	output := 0
+	for _, value := range b {
+		if output == 8 || output == 13 || output == 18 || output == 23 {
+			output++
+		}
+		encoded[output] = lowercaseHex[value>>4]
+		encoded[output+1] = lowercaseHex[value&0x0f]
+		output += 2
+	}
+	return string(encoded[:])
 }

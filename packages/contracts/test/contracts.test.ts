@@ -236,6 +236,11 @@ describe('seeded endpoint metrics', () => {
     expect(keys.has('POST|/orders')).toBe(true);
   });
 
+  it('propagates upstream sampling provenance into endpoint aggregates', () => {
+    const bucket = { ...SEED_BUCKETS[0], upstream_sampled: true };
+    expect(mergeBuckets([bucket], '1h', bucket.bucket_start)?.[0]?.upstream_sampled).toBe(true);
+  });
+
   it('filters one-minute buckets to the selected window', () => {
     const fifteenMinutes = mergeBuckets(SEED_BUCKETS, '15m');
     const oneHour = mergeBuckets(SEED_BUCKETS, '1h');

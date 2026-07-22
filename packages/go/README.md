@@ -35,4 +35,12 @@ responses, returned `echo.HTTPError` values, and panics.
 The installer owns the ingest endpoint, queue, batching, retries, privacy
 filtering, and bounded shutdown. It is a no-op when `Enabled` is false or `Key`
 is empty. The SDK never reads headers, query values, route parameters, bodies,
-cookies, or identity; unmatched concrete paths are dropped rather than sent.
+cookies, or identity. It never sends unmatched concrete paths: if no trusted
+route template is available, that event is dropped. Release tags accept only
+letters, digits, `.`, `_`, `+`, and `-`; unsafe free-form strings are omitted.
+
+Request handling only creates and enqueues the normalized summary. A background
+goroutine flushes bounded batches (100 events or every 5 seconds by default),
+with bounded retry/timeout behavior. The checked-in serial and parallel Echo
+benchmarks keep the incremental request-boundary work well below the 2 ms p95
+budget on the documented development hardware.

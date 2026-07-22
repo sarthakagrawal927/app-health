@@ -22,8 +22,10 @@ import {
   type OwnerIdentityAdapter,
 } from './identity.js';
 import { AppHealthService } from './service.js';
+import { InvalidOtlpError, otlpSuccessBody, projectOtlpTraces } from './otlp.js';
 
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_OTLP_BODY_BYTES = 1024 * 1024;
 
 export interface Env {
   APP_HEALTH_MODE?: string;
@@ -116,7 +118,60 @@ async function readJsonBounded(request: Request): Promise<unknown> {
   }
 }
 
+async function readStreamBounded(
+  stream: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<Uint8Array> {
+  if (!stream) return new Uint8Array();
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      throw new BodyTooLargeError();
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+async function readOtlpBodyBounded(request: Request): Promise<Uint8Array> {
+  const declared = Number(request.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declared) && declared > MAX_OTLP_BODY_BYTES) throw new BodyTooLargeError();
+  const encoded = await readStreamBounded(request.body, MAX_OTLP_BODY_BYTES);
+  const encoding = request.headers.get('content-encoding')?.trim().toLowerCase();
+  if (!encoding || encoding === 'identity') return encoded;
+  if (encoding !== 'gzip') throw new UnsupportedEncodingError();
+  try {
+    const decompressed = new Blob([encoded])
+      .stream()
+      .pipeThrough(new DecompressionStream('gzip')) as ReadableStream<Uint8Array>;
+    return await readStreamBounded(decompressed, MAX_OTLP_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) throw error;
+    throw new InvalidOtlpError('invalid gzip-compressed OTLP body');
+  }
+}
+
+function otlpContentType(request: Request): 'protobuf' | 'json' | null {
+  const value = request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+  if (value === 'application/x-protobuf' || value === 'application/protobuf') return 'protobuf';
+  if (value === 'application/json') return 'json';
+  return null;
+}
+
 class BodyTooLargeError extends Error {}
+class UnsupportedEncodingError extends Error {}
 
 function hostAllowed(url: URL, bundle: AdapterBundle, env: Env, kind: 'owner' | 'ingest'): boolean {
   if (bundle.local) return true;
@@ -149,6 +204,39 @@ const worker = {
       } catch (error) {
         if (error instanceof BodyTooLargeError)
           return json(413, { error: 'request body too large' });
+        throw error;
+      }
+    }
+
+    if (url.pathname === '/v1/traces') {
+      if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
+      if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+      const contentType = otlpContentType(request);
+      if (!contentType) return json(415, { error: 'unsupported OTLP content type' });
+      const keyRecord = await service.verifyIngestKey(extractBearerKey(request));
+      if (!keyRecord) return json(401, { error: 'invalid or revoked ingest key' });
+      try {
+        const projection = await projectOtlpTraces(await readOtlpBodyBounded(request), contentType);
+        const result = await service.ingestEvents(
+          keyRecord,
+          'otel',
+          undefined,
+          projection.events,
+          Date.now(),
+        );
+        if (!result.ok) return json(result.status, { error: result.error });
+        const responseType =
+          contentType === 'protobuf' ? 'application/x-protobuf' : 'application/json';
+        return new Response(otlpSuccessBody(contentType, projection.rejectedSpans), {
+          status: 200,
+          headers: { 'content-type': responseType },
+        });
+      } catch (error) {
+        if (error instanceof BodyTooLargeError)
+          return json(413, { error: 'request body too large' });
+        if (error instanceof UnsupportedEncodingError)
+          return json(415, { error: 'unsupported content encoding' });
+        if (error instanceof InvalidOtlpError) return json(400, { error: error.message });
         throw error;
       }
     }

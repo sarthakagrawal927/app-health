@@ -22,6 +22,9 @@ or copy-pasted instrumentation.
   records `Context.Path()` after routing.
 - Preserve the existing privacy boundary, asynchronous fail-open delivery,
   bounded queues, retries, diagnostics, flush, and shutdown behavior.
+- Make the privacy boundary structural: official adapters use matched route
+  templates, unmatched concrete paths are dropped, and release tags use a
+  narrow machine-safe character set.
 - Prove built/packed artifacts from outside workspace source resolution.
 - Put exact Express and Echo install/setup snippets in the dashboard.
 
@@ -99,6 +102,20 @@ The setup view offers Express and Echo tabs, uses the configured ingest origin,
 and includes the one-time key only while that key is already visible. It does
 not advertise unsupported frameworks as automatic integrations.
 
+### Prefer omission over heuristic obfuscation
+
+Request-derived strings are not general metadata. Express and Echo adapters
+record only their matched route templates; generic Go middleware records only
+a resolver or ServeMux pattern. If no trusted template exists, the event is
+dropped. Query strings, headers, cookies, bodies, parameter values, identities,
+logs, stacks, and spans are never read. Optional release tags are accepted only
+when they match a bounded release-token character set.
+
+This is safer than trying to detect every possible email, name, slug, token, or
+customer identifier after capture. Numeric/UUID normalization remains a
+defense-in-depth utility for explicitly supplied templates, not permission to
+send concrete fallback paths.
+
 ## Risks / Trade-offs
 
 - **npm authentication is absent locally** → Build and pack the release, but do
@@ -109,7 +126,9 @@ not advertise unsupported frameworks as automatic integrations.
   response status and `echo.HTTPError`, with a 500 fallback, and cover both in
   tests.
 - **A public Record API can be misused with concrete paths** → Validate through
-  the same normalizers and document that adapters must pass route templates.
+  the same normalizers, reject obvious unsafe strings, and document that
+  adapters must pass route templates; official adapters never pass unmatched
+  concrete paths.
 - **Bundling contracts can hide dependency drift** → Consumer tests parse a
   real packed package and existing contract fixtures remain canonical.
 

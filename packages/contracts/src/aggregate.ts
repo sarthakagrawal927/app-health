@@ -25,6 +25,8 @@ export const BucketV1 = z.object({
   error_count: z.number().int().min(0),
   duration_sum_ms: z.number().int().min(0),
   last_seen: z.number().int().min(0).nullable(),
+  /** True when any contribution came from a potentially sampled upstream trace stream. */
+  upstream_sampled: z.boolean().optional(),
   /** Fixed latency histogram counts aligned with LATENCY_BUCKET_BOUNDS_MS. */
   histogram: z.array(z.number().int().min(0)).length(LATENCY_HISTOGRAM_BUCKETS),
 });
@@ -44,6 +46,8 @@ export const EndpointAggregateV1 = z.object({
   health_state: z.enum(HEALTH_STATES) as z.ZodEnum<[HealthState, ...HealthState[]]>,
   /** False when the endpoint inventory survived but WAE sampled out its metrics. */
   metrics_available: z.boolean().optional(),
+  /** True when counts and percentiles include trace-derived sampled estimates. */
+  upstream_sampled: z.boolean().optional(),
 });
 
 export type EndpointAggregateV1 = z.infer<typeof EndpointAggregateV1>;

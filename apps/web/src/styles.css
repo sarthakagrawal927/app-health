@@ -316,6 +316,7 @@ input::placeholder {
 }
 .runtime-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid var(--line);
   margin: -4px -4px 16px;
@@ -669,6 +670,15 @@ pre {
     Consolas,
     monospace;
   color: #26322d;
+}
+.route-cell {
+  display: grid;
+  gap: 3px;
+}
+.sampling-note {
+  color: #7a6541;
+  font-size: 10px;
+  letter-spacing: 0.01em;
 }
 .method {
   display: inline-block;

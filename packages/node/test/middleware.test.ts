@@ -64,14 +64,47 @@ describe('expressMiddleware behavior', () => {
     expect(recorded[0].route).toBe('/orders/:id/items/:itemId');
   });
 
-  it('records status code from the response, including 404 and 500', async () => {
+  it('records status code from matched responses and drops unmatched concrete paths', async () => {
     const { app, client, recorded } = setup();
     await request(app).get('/users/missing'); // 404
     await request(app).get('/boom'); // 500
     await request(app).get('/nope'); // 404 (unmatched)
     await client.flush();
     const statuses = recorded.map((r) => r.status_code).sort((a, b) => a - b);
-    expect(statuses).toEqual([404, 404, 500]);
+    expect(statuses).toEqual([404, 500]);
+    expect(recorded.map((r) => r.route)).not.toContain('/nope');
+  });
+
+  it('never records private strings from unmatched or parent-router concrete paths', async () => {
+    const controller = createFetchController();
+    const recorded: {
+      method: string;
+      route: string;
+      status_code: number;
+      duration_ms: number;
+    }[] = [];
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+      disableTimer: true,
+    });
+    const app = express();
+    app.use(expressMiddleware({ client, onRecord: (event) => recorded.push(event) }));
+    const router = express.Router();
+    router.get('/orders/:orderId', (_req, res) => res.sendStatus(204));
+    app.use('/tenants/:tenantId', router);
+    app.use((_req, res) => res.status(404).json({ error: 'not found' }));
+
+    await request(app).get('/users/alice-private/no-route');
+    await request(app).get('/tenants/customer-secret/orders/order-secret');
+    await client.flush();
+
+    const serializedRoutes = JSON.stringify(recorded.map((event) => event.route));
+    expect(serializedRoutes).not.toContain('alice-private');
+    expect(serializedRoutes).not.toContain('customer-secret');
+    expect(serializedRoutes).not.toContain('order-secret');
+    expect(recorded.map((event) => event.route)).toContain('/orders/:orderId');
   });
 
   it('records POST with a body without capturing the body', async () => {

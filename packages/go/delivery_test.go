@@ -16,7 +16,12 @@ import (
 func TestDelivery_OutageFailOpen(t *testing.T) {
 	rs := newRecordingServer()
 	rs.status = 500 // every request fails
-	c := newTestClient(t, rs, Config{MaxRetries: 1})
+	c := newTestClient(t, rs, Config{
+		MaxRetries: 1,
+		RouteResolver: func(*http.Request) string {
+			return "/x"
+		},
+	})
 
 	h := c.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)

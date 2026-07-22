@@ -172,7 +172,7 @@ describe('App Health V0 UI', () => {
     expect(screen.queryByText('ahk_one_time_secret')).toBeNull();
   });
 
-  it('shows copy-ready Express and Echo package paths without persisting the key', async () => {
+  it('shows copy-ready SDK and OpenTelemetry setup without persisting the key', async () => {
     installFetch();
     render(<App />);
     fireEvent.change(screen.getByLabelText('Application name'), {
@@ -193,7 +193,24 @@ describe('App Health V0 UI', () => {
     expect(screen.getByText(/Environment: "production"/)).toBeTruthy();
     expect(screen.getByText(/Project: "orders-api"/)).toBeTruthy();
     expect(screen.queryByText(/IngestURL/)).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Existing OpenTelemetry' }));
+    expect(screen.getByText(/otlphttp\/app_health/)).toBeTruthy();
+    expect(screen.getByText(/\/v1\/traces/)).toBeTruthy();
+    expect(screen.getByText(/Bearer ahk_one_time_secret/)).toBeTruthy();
+    expect(screen.getByText(/Reload your Collector/)).toBeTruthy();
     expect(localStorage.getItem(STORAGE_KEY)).not.toContain('ahk_one_time_secret');
+  });
+
+  it('identifies OpenTelemetry traffic and discloses sampled endpoint estimates', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    installFetch({
+      status: { ...connected, runtime: 'otel' },
+      endpointRows: [{ ...endpoints[0], upstream_sampled: true }],
+    });
+    render(<App />);
+    expect(await screen.findByText('OpenTelemetry connected')).toBeTruthy();
+    expect(screen.getByText(/OpenTelemetry pipeline/)).toBeTruthy();
+    expect(screen.getAllByText('OTel sampled estimate')).toHaveLength(2);
   });
 
   it('renders populated endpoint metrics and changes windows', async () => {

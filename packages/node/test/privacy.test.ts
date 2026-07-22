@@ -86,13 +86,32 @@ describe('privacy: serialized batches exclude all request content', () => {
     // sensitive request properties. This protects against future regressions.
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('../src/middleware.ts', import.meta.url), 'utf8');
-    // `req.route.path` and `req.baseUrl` and `req.path`/`req.url` are allowed.
+    // Only the matched route template is allowed; concrete path properties are
+    // deliberately excluded because they can contain arbitrary private strings.
     expect(src).not.toMatch(/req\.headers/);
     expect(src).not.toMatch(/req\.cookies/);
     expect(src).not.toMatch(/req\.query/);
     expect(src).not.toMatch(/req\.params/);
     expect(src).not.toMatch(/req\.body/);
+    expect(src).not.toMatch(/req\.baseUrl/);
+    expect(src).not.toMatch(/req\.path/);
+    expect(src).not.toMatch(/req\.url/);
     expect(src).not.toMatch(/res\.body/);
+  });
+
+  it('omits an unsafe configured release string', async () => {
+    const controller = createFetchController();
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'http://localhost:8787/v1/ingest',
+      fetch: controller.fetch,
+      disableTimer: true,
+      release: 'alice@example.com/private?token=secret',
+    });
+    client.record({ method: 'GET', route: '/health', status_code: 200, duration_ms: 1 });
+    await client.flush();
+    expect(controller.requests[0].body).not.toContain('alice@example.com');
+    expect(JSON.parse(controller.requests[0].body).events[0]).not.toHaveProperty('release');
   });
 
   it('the client only accepts endpoint-summary input fields', async () => {

@@ -15,12 +15,46 @@ describe('Analytics Engine telemetry adapter', () => {
     ]);
     expect(points).toHaveLength(1);
     expect(points[0]).toMatchObject({
-      blobs: ['GET', '/users/:id', '3', 'node', 'r1'],
+      blobs: ['GET', '/users/:id', '3', 'node', 'r1', ''],
       doubles: [2, 1, 32, 101],
     });
     expect(JSON.stringify(points[0])).not.toMatch(
       /event_id|header|cookie|body|identity|stack|trace/i,
     );
+  });
+
+  it('persists and queries upstream trace-sampling provenance additively', async () => {
+    const points: { blobs: string[] }[] = [];
+    const writer = new AnalyticsEngineBuckets(
+      { writeDataPoint: (point) => points.push(point) },
+      async () => [],
+    );
+    await writer.upsertEvents('app-a', 'env-a', 'otel', undefined, [
+      {
+        timestamp: 100,
+        method: 'GET',
+        route: '/otel',
+        status_code: 200,
+        duration_ms: 10,
+        upstream_sampled: true,
+      },
+    ]);
+    expect(points[0].blobs[5]).toBe('sampled');
+
+    const reader = new AnalyticsEngineBuckets({ writeDataPoint: () => undefined }, async () => [
+      {
+        method: 'GET',
+        route: '/otel',
+        latency_bucket: 2,
+        request_count: 1,
+        error_count: 0,
+        duration_sum_ms: 10,
+        last_seen: 100,
+        upstream_sampled: 1,
+      },
+    ]);
+    const buckets = await reader.queryBuckets('app-a', 'env-a', 1000 - WINDOW_MS['15m'], 1000);
+    expect(buckets[0].upstream_sampled).toBe(true);
   });
 
   it('uses fixed sampling-aware SQL and rebuilds a weighted histogram', async () => {

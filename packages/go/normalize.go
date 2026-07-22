@@ -11,17 +11,16 @@ var numericSegment = regexp.MustCompile(`^[0-9]+$`)
 // uuidSegment matches an RFC 4122 shaped UUID (any version/variant) segment.
 var uuidSegment = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// normalizeRouteFallback applies a conservative fallback when no framework
-// route pattern is available. It replaces purely numeric path segments with
-// ":id" and UUID-shaped segments with ":uuid", leaving all other segments
-// intact. This is deliberately conservative: it only collapses segments that
-// are almost certainly identifiers, so distinct routes are not merged.
+// normalizeRouteTemplate validates a trusted framework route template and
+// replaces purely numeric path segments with ":id" and UUID-shaped segments
+// with ":uuid" as defense in depth. Official adapters never call this with an
+// unmatched concrete request path.
 //
 // Routes longer than MaxRouteLength are dropped to avoid merging distinct
 // endpoints into the same truncated identity.
-func normalizeRouteFallback(path string) string {
-	if path == "" {
-		return "/"
+func normalizeRouteTemplate(path string) string {
+	if path == "" || path != strings.TrimSpace(path) || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "?#") {
+		return ""
 	}
 	segments := strings.Split(path, "/")
 	for i, seg := range segments {
@@ -40,6 +39,25 @@ func normalizeRouteFallback(path string) string {
 		return ""
 	}
 	return out
+}
+
+// normalizeRelease accepts only bounded machine-safe release identifiers.
+// Unsafe free-form strings are omitted instead of partially redacted.
+func normalizeRelease(release string) string {
+	if release == "" || release != strings.TrimSpace(release) || len(release) > MaxReleaseLength {
+		return ""
+	}
+	for index := 0; index < len(release); index++ {
+		character := release[index]
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '.' || character == '_' || character == '+' || character == '-' {
+			continue
+		}
+		return ""
+	}
+	return release
 }
 
 // patternToRoute converts a Go 1.22 ServeMux request pattern into the V1 route
@@ -95,11 +113,7 @@ func patternToRoute(pattern string) string {
 			i++
 		}
 	}
-	out := b.String()
-	if len(out) > MaxRouteLength {
-		return ""
-	}
-	return out
+	return normalizeRouteTemplate(b.String())
 }
 
 func isHTTPMethod(s string) bool {

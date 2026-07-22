@@ -18,10 +18,11 @@
 - [x] 3.1 Replace generic Node/Go setup copy with verified Express and Echo installation snippets using the production ingest origin
 - [x] 3.2 Add dashboard tests for framework switching, one-time-key handling, and copy-ready package paths
 - [x] 3.3 Update README, project status, and package documentation with install, shutdown, diagnostics, private-Go-module, and release instructions
+- [x] 3.4 Harden Node and Go string handling so official adapters drop unmatched concrete paths, unsafe release strings are omitted, privacy tests cover private slugs, and batching remains asynchronous and bounded
 
 ## 4. Verification and release
 
-- [x] 4.1 Run formatting, lint, TypeScript checks, Node package consumer tests, Go tests/vet, and strict OpenSpec validation
+- [x] 4.1 Run formatting, lint, TypeScript checks, Node package consumer tests, Go tests/vet, SDK benchmarks, and strict OpenSpec validation
 - [ ] 4.2 Commit and push the exact green change, wait for matching CI, run the deploy guard, deploy the setup UI, and smoke both live snippets
 - [ ] 4.3 Run the guarded npm publication and Go submodule tag steps only if their authentication and repository prerequisites pass; otherwise record the exact external gate without claiming publication
 - [ ] 4.4 Sync canonical specs, archive the completed OpenSpec change, and leave `main` clean and synchronized

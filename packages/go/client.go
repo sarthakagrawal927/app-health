@@ -54,8 +54,8 @@ type Config struct {
 	HTTPClient *http.Client
 
 	// RouteResolver optionally resolves a normalized route template for
-	// third-party routers that do not populate Request.Pattern. Return "" to
-	// fall back to the conservative normalizer.
+	// third-party routers. Return "" to use an available ServeMux pattern; if
+	// neither exists, the event is dropped rather than using a concrete path.
 	RouteResolver RouteResolver
 
 	// Now overrides the wall-clock source for event timestamps. Defaults to
@@ -135,6 +135,7 @@ func New(cfg Config) *Client {
 	if cfg.BaseBackoff <= 0 {
 		cfg.BaseBackoff = DefaultBaseBackoff
 	}
+	cfg.Release = normalizeRelease(cfg.Release)
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
@@ -178,9 +179,8 @@ func (c *Client) enqueue(ev EventV1) {
 // route parameters, bodies, cookies, or identity.
 func (c *Client) Record(input RecordInput) {
 	method := strings.ToUpper(strings.TrimSpace(input.Method))
-	route := strings.TrimSpace(input.Route)
-	if !isHTTPMethod(method) || route == "" || !strings.HasPrefix(route, "/") ||
-		len(route) > MaxRouteLength || strings.ContainsAny(route, "?#") ||
+	route := normalizeRouteTemplate(input.Route)
+	if !isHTTPMethod(method) || route == "" ||
 		input.StatusCode < MinStatusCode || input.StatusCode > MaxStatusCode ||
 		input.Duration < 0 {
 		c.dropped.Add(1)

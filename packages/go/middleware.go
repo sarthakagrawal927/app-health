@@ -11,7 +11,8 @@ import (
 
 // RouteResolver resolves a normalized route template for a request when the
 // framework does not populate Request.Pattern (e.g. third-party routers).
-// Return "" to fall back to the conservative normalizer.
+// Return "" to fall back to Request.Pattern; if neither produces a trusted
+// template, the event is dropped.
 type RouteResolver func(*http.Request) string
 
 // Middleware returns net/http middleware that records method, normalized
@@ -25,8 +26,16 @@ type RouteResolver func(*http.Request) string
 // server's recovery (which returns 500 to the client). The middleware records
 // status 500 for a panicked handler and re-raises the original panic value.
 func (c *Client) Middleware(next http.Handler) http.Handler {
+	// Go 1.22 does not expose Request.Pattern. When the wrapped handler is a
+	// standard ServeMux, resolve its registered pattern before dispatch so the
+	// SDK still records templates without reading the concrete URL path.
+	serveMux, _ := next.(*http.ServeMux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := c.now()
+		muxPattern := ""
+		if serveMux != nil {
+			_, muxPattern = serveMux.Handler(r)
+		}
 		rw := &responseWriter{ResponseWriter: w}
 		defer func() {
 			elapsed := c.now().Sub(start)
@@ -37,11 +46,11 @@ func (c *Client) Middleware(next http.Handler) http.Handler {
 				// unchanged by instrumentation.
 				rw.status = http.StatusInternalServerError
 				rw.wroteHeader = true
-				c.record(rw, r, start, elapsed)
+				c.record(rw, r, muxPattern, start, elapsed)
 				panic(rec)
 			}
 			rw.finish()
-			c.record(rw, r, start, elapsed)
+			c.record(rw, r, muxPattern, start, elapsed)
 		}()
 		next.ServeHTTP(rw, r)
 	})
@@ -49,8 +58,8 @@ func (c *Client) Middleware(next http.Handler) http.Handler {
 
 // record builds and enqueues a single EventV1. It never reads headers,
 // cookies, query, parameters, or bodies.
-func (c *Client) record(rw *responseWriter, r *http.Request, start time.Time, elapsed time.Duration) {
-	route := c.resolveRoute(r)
+func (c *Client) record(rw *responseWriter, r *http.Request, muxPattern string, start time.Time, elapsed time.Duration) {
+	route := c.resolveRoute(r, muxPattern)
 	if route == "" {
 		// No usable route identity; drop rather than emit a misleading event.
 		return
@@ -85,20 +94,21 @@ func (c *Client) record(rw *responseWriter, r *http.Request, start time.Time, el
 // resolveRoute picks the route identity in priority order:
 //  1. configured RouteResolver (if any and returns non-empty)
 //  2. Go 1.23+ Request.Pattern (ServeMux), converted to :wildcard form
-//  3. conservative numeric/UUID fallback on the concrete path
-func (c *Client) resolveRoute(r *http.Request) string {
+//  3. a Go 1.22 ServeMux pattern resolved by Middleware before dispatch
+//  4. drop the event rather than read the concrete request path
+func (c *Client) resolveRoute(r *http.Request, muxPattern string) string {
 	if c.cfg.RouteResolver != nil {
 		if route := c.cfg.RouteResolver(r); route != "" {
-			if len(route) > MaxRouteLength {
-				return ""
-			}
-			return route
+			return normalizeRouteTemplate(route)
 		}
 	}
 	if pattern, ok := requestPattern(r); ok {
 		return patternToRoute(pattern)
 	}
-	return normalizeRouteFallback(r.URL.Path)
+	if muxPattern != "" {
+		return patternToRoute(muxPattern)
+	}
+	return ""
 }
 
 // responseWriter wraps http.ResponseWriter to capture the final status code

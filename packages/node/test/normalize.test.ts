@@ -70,12 +70,19 @@ describe('normalizeStatus / duration / release / timestamp', () => {
     expect(normalizeDuration(601_000)).toBeNull();
     expect(normalizeDuration(NaN)).toBeNull();
   });
-  it('trims and bounds release, returning undefined when absent', () => {
+  it('bounds release and returns undefined when absent', () => {
     expect(normalizeRelease(undefined)).toBeUndefined();
-    expect(normalizeRelease('  v1.2.3  ')).toBe('v1.2.3');
+    expect(normalizeRelease('  v1.2.3  ')).toBeUndefined();
     expect(normalizeRelease('')).toBeUndefined();
     expect(normalizeRelease('x'.repeat(200))).toBeUndefined();
     expect(normalizeRelease(123)).toBeUndefined();
+  });
+  it('omits unsafe free-form release strings', () => {
+    expect(normalizeRelease('alice@example.com')).toBeUndefined();
+    expect(normalizeRelease('release/private-user')).toBeUndefined();
+    expect(normalizeRelease('v1.2.3?token=secret')).toBeUndefined();
+    expect(normalizeRelease('release 1')).toBeUndefined();
+    expect(normalizeRelease('sha-abc123+prod')).toBe('sha-abc123+prod');
   });
   it('rounds and validates timestamps', () => {
     expect(normalizeTimestamp(1_725_000_000_000)).toBe(1_725_000_000_000);

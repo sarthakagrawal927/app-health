@@ -245,12 +245,14 @@ function Setup({
         </div>
         <h1 id="setup-title">Know which routes are healthy before your users tell you.</h1>
         <p className="setup-lede">
-          Add one lightweight middleware to your Node or Go service. App Health turns observed
-          requests into a focused view of traffic, latency, and errors—without storing request data.
+          Add one lightweight middleware, or connect an existing OpenTelemetry pipeline. App Health
+          turns observed requests into a focused view of traffic, latency, and errors—without
+          storing request data.
         </p>
         <div className="trust-list" aria-label="Product guarantees">
           <span>Method + route only</span>
           <span>Fail-open SDKs</span>
+          <span>OTLP compatible</span>
           <span>No payload storage</span>
         </div>
       </section>
@@ -306,12 +308,14 @@ function KeySetup({
   created: CreateAppResponseV1;
   onDone: () => void;
 }): JSX.Element {
-  const [runtime, setRuntime] = useState<'express' | 'echo'>('express');
+  const [runtime, setRuntime] = useState<'express' | 'echo' | 'otel'>('express');
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
   const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
   const echoSnippet = `go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0\n\nimport apphealthechov5 "github.com/sarthakagrawal927/app-health/packages/go/echo/v5"\n\ncleanup := apphealthechov5.Install(e, apphealthechov5.Config{\n  Enabled: true,\n  Environment: ${JSON.stringify(created.environment.name)},\n  Key: ${JSON.stringify(key)},\n  Project: ${JSON.stringify(created.app.name)},\n})\ndefer cleanup()`;
-  const snippet = runtime === 'express' ? expressSnippet : echoSnippet;
+  const otelSnippet = `exporters:\n  otlphttp/app_health:\n    traces_endpoint: '${INGEST_ORIGIN}/v1/traces'\n    headers:\n      Authorization: 'Bearer ${key}'\n\nservice:\n  pipelines:\n    traces:\n      # Keep your current receivers and processors.\n      exporters: [your_existing_exporter, otlphttp/app_health]`;
+  const snippet =
+    runtime === 'express' ? expressSnippet : runtime === 'echo' ? echoSnippet : otelSnippet;
 
   async function copy(value: string, label: string): Promise<void> {
     await navigator.clipboard?.writeText(value);
@@ -340,7 +344,7 @@ function KeySetup({
         </button>
       </section>
       <section className="snippet-panel">
-        <div className="runtime-tabs" role="tablist" aria-label="SDK runtime">
+        <div className="runtime-tabs" role="tablist" aria-label="Ingestion source">
           <button
             role="tab"
             aria-selected={runtime === 'express'}
@@ -350,6 +354,9 @@ function KeySetup({
           </button>
           <button role="tab" aria-selected={runtime === 'echo'} onClick={() => setRuntime('echo')}>
             Go + Echo
+          </button>
+          <button role="tab" aria-selected={runtime === 'otel'} onClick={() => setRuntime('otel')}>
+            Existing OpenTelemetry
           </button>
         </div>
         <pre>
@@ -363,7 +370,11 @@ function KeySetup({
         </button>
       </section>
       <div className="install-footer">
-        <p>Run your application and make one request to any route.</p>
+        <p>
+          {runtime === 'otel'
+            ? 'Reload your Collector and send one traced request to a server route.'
+            : 'Run your application and make one request to any route.'}
+        </p>
         <button className="primary-button" onClick={onDone}>
           I saved the key <span aria-hidden="true">→</span>
         </button>
@@ -379,14 +390,14 @@ function StatusBanner({ status }: { status: InstallationStatusV1 }): JSX.Element
       'Start your service and make one request. This page checks automatically.',
     ],
     connected: [
-      'SDK connected',
+      status.runtime === 'otel' ? 'OpenTelemetry connected' : 'SDK connected',
       status.runtime
-        ? `${status.runtime === 'node' ? 'Node.js' : 'Go'} is sending endpoint summaries.`
+        ? `${status.runtime === 'node' ? 'Node.js' : status.runtime === 'go' ? 'Go' : 'Your OpenTelemetry pipeline'} is sending endpoint summaries.`
         : 'Endpoint summaries are arriving.',
     ],
     stale: [
       'Traffic has gone quiet',
-      'The SDK connected before, but no recent events arrived. Check that your service is running.',
+      'This source connected before, but no recent events arrived. Check that your service is running.',
     ],
     revoked: [
       'Ingest key revoked',
@@ -419,7 +430,12 @@ function EndpointTableRow({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.
         <span className={methodClass(endpoint.method)}>{endpoint.method}</span>
       </td>
       <td>
-        <code className="route">{endpoint.route}</code>
+        <div className="route-cell">
+          <code className="route">{endpoint.route}</code>
+          {endpoint.upstream_sampled ? (
+            <span className="sampling-note">OTel sampled estimate</span>
+          ) : null}
+        </div>
       </td>
       <td>{hasMetrics ? endpoint.request_count.toLocaleString() : '—'}</td>
       <td className={hasMetrics && endpoint.error_rate >= 0.01 ? 'metric-warn' : ''}>
@@ -445,7 +461,12 @@ function EndpointCard({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Elem
       <div className="endpoint-card-head">
         <div>
           <span className={methodClass(endpoint.method)}>{endpoint.method}</span>
-          <code className="route">{endpoint.route}</code>
+          <div className="route-cell">
+            <code className="route">{endpoint.route}</code>
+            {endpoint.upstream_sampled ? (
+              <span className="sampling-note">OTel sampled estimate</span>
+            ) : null}
+          </div>
         </div>
         <span className={`health health-${endpoint.health_state}`}>
           <i />

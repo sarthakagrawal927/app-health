@@ -30,6 +30,17 @@ async function call(
   return worker.fetch(new Request(url, init), env);
 }
 
+async function callRaw(
+  method: string,
+  path: string,
+  env: Env,
+  body: BodyInit | null,
+  headers: Record<string, string>,
+  origin = 'https://worker.local',
+): Promise<Response> {
+  return worker.fetch(new Request(new URL(`${origin}${path}`), { method, body, headers }), env);
+}
+
 function bearer(key: string): Record<string, string> {
   return { authorization: `Bearer ${key}` };
 }
@@ -91,6 +102,43 @@ function currentBatch() {
     ...batch,
     events: batch.events.map((event, index) => ({ ...event, timestamp: now + index })),
   };
+}
+
+function otlpJson(now = Date.now()): string {
+  const end = BigInt(now) * 1_000_000n;
+  return JSON.stringify({
+    resourceSpans: [
+      {
+        resource: {
+          attributes: [{ key: 'service.version', value: { stringValue: 'release-otel' } }],
+        },
+        scopeSpans: [
+          {
+            spans: [
+              {
+                traceId: '000102030405060708090a0b0c0d0e0f',
+                spanId: '1011121314151617',
+                kind: 2,
+                startTimeUnixNano: String(end - 25_000_000n),
+                endTimeUnixNano: String(end),
+                attributes: [
+                  { key: 'http.request.method', value: { stringValue: 'GET' } },
+                  { key: 'http.route', value: { stringValue: '/otel/:id' } },
+                  { key: 'http.response.status_code', value: { intValue: '200' } },
+                  { key: 'url.path', value: { stringValue: '/otel/alice-private' } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+}
+
+async function gzip(value: string): Promise<Uint8Array> {
+  const stream = new Blob([value]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 describe('worker /v1/health', () => {
@@ -162,6 +210,128 @@ describe('worker production boundaries', () => {
     );
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({ accepted: 6, duplicates: 0 });
+  });
+
+  it('accepts authenticated OTLP JSON on only the ingest hostname', async () => {
+    const headers = { ...bearer('ahk_production'), 'content-type': 'application/json' };
+    const response = await callRaw(
+      'POST',
+      '/v1/traces',
+      productionEnv(),
+      otlpJson(),
+      headers,
+      'https://ingest.sassmaker.com',
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({});
+
+    const wrongHost = await callRaw(
+      'POST',
+      '/v1/traces',
+      productionEnv(),
+      otlpJson(),
+      headers,
+      'https://health.sassmaker.com',
+    );
+    expect(wrongHost.status).toBe(404);
+  });
+
+  it('enforces OTLP method, content type, encoding, and bearer authentication', async () => {
+    const env = productionEnv();
+    const origin = 'https://ingest.sassmaker.com';
+    await expect(
+      callRaw('GET', '/v1/traces', env, null, bearer('ahk_production'), origin).then(
+        (response) => response.status,
+      ),
+    ).resolves.toBe(405);
+    await expect(
+      callRaw(
+        'POST',
+        '/v1/traces',
+        env,
+        otlpJson(),
+        { ...bearer('ahk_production'), 'content-type': 'text/plain' },
+        origin,
+      ).then((response) => response.status),
+    ).resolves.toBe(415);
+    await expect(
+      callRaw(
+        'POST',
+        '/v1/traces',
+        env,
+        otlpJson(),
+        { 'content-type': 'application/json' },
+        origin,
+      ).then((response) => response.status),
+    ).resolves.toBe(401);
+    await expect(
+      callRaw(
+        'POST',
+        '/v1/traces',
+        env,
+        otlpJson(),
+        {
+          ...bearer('ahk_production'),
+          'content-type': 'application/json',
+          'content-encoding': 'br',
+        },
+        origin,
+      ).then((response) => response.status),
+    ).resolves.toBe(415);
+  });
+
+  it('supports gzip and bounds the decompressed OTLP body', async () => {
+    const env = productionEnv();
+    const headers = {
+      ...bearer('ahk_production'),
+      'content-type': 'application/json',
+      'content-encoding': 'gzip',
+    };
+    const accepted = await callRaw(
+      'POST',
+      '/v1/traces',
+      env,
+      await gzip(otlpJson()),
+      headers,
+      'https://ingest.sassmaker.com',
+    );
+    expect(accepted.status).toBe(200);
+
+    const oversized = await callRaw(
+      'POST',
+      '/v1/traces',
+      env,
+      await gzip(JSON.stringify({ padding: 'x'.repeat(1024 * 1024) })),
+      headers,
+      'https://ingest.sassmaker.com',
+    );
+    expect(oversized.status).toBe(413);
+  });
+
+  it('rejects malformed OTLP JSON and protobuf without storing telemetry', async () => {
+    const env = productionEnv();
+    const origin = 'https://ingest.sassmaker.com';
+    const auth = bearer('ahk_production');
+    await expect(
+      callRaw(
+        'POST',
+        '/v1/traces',
+        env,
+        '{',
+        { ...auth, 'content-type': 'application/json' },
+        origin,
+      ).then((response) => response.status),
+    ).resolves.toBe(400);
+    await expect(
+      callRaw(
+        'POST',
+        '/v1/traces',
+        env,
+        Uint8Array.of(0xff),
+        { ...auth, 'content-type': 'application/x-protobuf' },
+        origin,
+      ).then((response) => response.status),
+    ).resolves.toBe(400);
   });
 
   it('rejects workers.dev and cross-host route bypasses', async () => {
@@ -299,6 +469,50 @@ describe('worker local mode', () => {
     expect(body.environment.app_id).toBe(body.app.id);
     expect(body.key.key.startsWith('ahk_')).toBe(true);
     expect(body.key.key).not.toBe(SEED_KEY);
+  });
+
+  it('deduplicates OTLP retries and reports an OTel sampled installation', async () => {
+    const createdResponse = await call('POST', '/v1/apps', LOCAL_ENV, {
+      name: 'otel-service',
+      environment: 'production',
+    });
+    const created = (await createdResponse.json()) as {
+      app: { id: string };
+      environment: { id: string };
+      key: { key: string };
+    };
+    const headers = { ...bearer(created.key.key), 'content-type': 'application/json' };
+    const payload = otlpJson();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await callRaw('POST', '/v1/traces', LOCAL_ENV, payload, headers);
+      expect(response.status).toBe(200);
+    }
+
+    const statusResponse = await call(
+      'GET',
+      `/v1/installation/status?app_id=${created.app.id}&environment_id=${created.environment.id}`,
+      LOCAL_ENV,
+    );
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      state: 'connected',
+      runtime: 'otel',
+    });
+
+    const endpointsResponse = await call(
+      'GET',
+      `/v1/endpoints?app_id=${created.app.id}&environment_id=${created.environment.id}&window=15m`,
+      LOCAL_ENV,
+    );
+    const endpoints = (await endpointsResponse.json()) as {
+      endpoints: { route: string; request_count: number; upstream_sampled?: boolean }[];
+    };
+    expect(endpoints.endpoints).toContainEqual(
+      expect.objectContaining({
+        route: '/otel/:id',
+        request_count: 1,
+        upstream_sampled: true,
+      }),
+    );
   });
 
   it('rejects invalid app creation body', async () => {
