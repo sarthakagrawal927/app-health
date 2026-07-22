@@ -60,7 +60,7 @@ export const WINDOW_MS: Record<Window, number> = {
 export const BUCKET_MS = 60 * 1000;
 
 /** Supported SDK runtimes reported for installation verification. */
-export const RUNTIMES = ['node', 'go'] as const;
+export const RUNTIMES = ['node', 'go', 'otel'] as const;
 export type Runtime = (typeof RUNTIMES)[number];
 
 export const HEALTH_STATES = ['healthy', 'degraded', 'unhealthy', 'insufficient-data'] as const;

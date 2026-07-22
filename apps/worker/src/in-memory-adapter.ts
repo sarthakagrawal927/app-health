@@ -431,6 +431,7 @@ export class InMemoryAdapter
       route: string;
       status_code: number;
       duration_ms: number;
+      upstream_sampled?: boolean;
     }[],
   ): Promise<void> {
     for (const event of events) {
@@ -443,6 +444,7 @@ export class InMemoryAdapter
         statusIsError: isErrorStatus(event.status_code),
         durationMs: event.duration_ms,
         timestamp: event.timestamp,
+        upstreamSampled: event.upstream_sampled,
       });
     }
   }
@@ -465,6 +467,7 @@ export class InMemoryAdapter
     statusIsError: boolean;
     durationMs: number;
     timestamp: number;
+    upstreamSampled?: boolean;
   }): Promise<void> {
     const key = bucketKey(
       input.app_id,
@@ -482,6 +485,7 @@ export class InMemoryAdapter
         existing.last_seen = input.timestamp;
       }
       existing.histogram[histogramIndex(input.durationMs)] += 1;
+      if (input.upstreamSampled) existing.upstream_sampled = true;
       return;
     }
     const histogram = emptyHistogram();
@@ -496,6 +500,7 @@ export class InMemoryAdapter
       error_count: input.statusIsError ? 1 : 0,
       duration_sum_ms: input.durationMs,
       last_seen: input.timestamp,
+      ...(input.upstreamSampled ? { upstream_sampled: true } : {}),
       histogram,
     });
   }

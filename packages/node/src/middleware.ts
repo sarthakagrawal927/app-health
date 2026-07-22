@@ -2,11 +2,11 @@
 //
 // Captures method, framework route template (Express `baseUrl + route.path`
 // after the response completes), status code, integer duration, timestamp,
-// and optional release. Falls back to conservative numeric/UUID path
-// normalization when no Express route matched (e.g. 404s).
+// and optional release. If no Express route matched, the event is dropped;
+// concrete request paths are never used as telemetry dimensions.
 //
-// Privacy: the middleware reads only `req.method`, `req.baseUrl`,
-// `req.route.path`, `req.path`, and `res.statusCode`. It never reads headers,
+// Privacy: the middleware reads only `req.method`, `req.route.path`, and
+// `res.statusCode`. It never reads a concrete path, headers,
 // cookies, query values, route parameter values, request or response bodies,
 // user identity, logs, stacks, or spans.
 //
@@ -69,19 +69,17 @@ export function expressMiddleware(options: ExpressMiddlewareOptions): RequestHan
 
 /**
  * Resolve the route template for a completed Express request.
- * Prefers `req.baseUrl + req.route.path` (the framework-native template).
- * Falls back to conservative concrete-path normalization when no route
- * matched (404) or `req.route` is unavailable.
+ * Uses `req.route.path`, the framework-native matched template. Express
+ * `baseUrl` can contain concrete parent-router parameter values, so it is not
+ * read. When no string template exists (including unmatched 404s), the event
+ * is omitted.
  */
 function resolveExpressRoute(req: Request): string | null {
   const routePath = req.route?.path;
   if (typeof routePath === 'string' && routePath.length > 0) {
-    const base = typeof req.baseUrl === 'string' ? req.baseUrl : '';
-    const combined = `${base}${routePath}`;
-    return normalizeRoutePath(combined);
+    return normalizeRoutePath(routePath);
   }
-  const path = typeof req.path === 'string' ? req.path : req.url;
-  return normalizeRoutePath(path);
+  return null;
 }
 
 function nowMs(): number {

@@ -32,6 +32,8 @@ import { isErrorStatus } from './in-memory-adapter.js';
 export type IngestResult =
   { ok: true; accepted: number; duplicates: number } | { ok: false; status: number; error: string };
 
+export type EndpointEvent = EventV1 & { upstream_sampled?: boolean };
+
 /** V0 worker service. Stateless aside from the injected repositories. */
 export class AppHealthService {
   constructor(private readonly repos: AppHealthRepositories) {}
@@ -93,27 +95,28 @@ export class AppHealthService {
    * - Validates the schema version and bounded event fields; rejects unknown
    *   unsafe fields rather than stripping them.
    * - Checks per-event clock skew against the server time.
-   * - Deduplicates retried event IDs for a bounded window.
+   * - Deduplicates retried SDK batches for a bounded window.
    * - Updates one-minute aggregate buckets only; no raw event is persisted.
    */
   async ingest(rawKey: string, body: unknown, now: number): Promise<IngestResult> {
-    if (!rawKey) return { ok: false, status: 401, error: 'missing ingest key' };
-    const keyRecord = await this.repos.keys.verifyKey(rawKey);
+    const keyRecord = await this.verifyIngestKey(rawKey);
     if (!keyRecord) {
-      return { ok: false, status: 401, error: 'invalid or revoked ingest key' };
+      return {
+        ok: false,
+        status: 401,
+        error: rawKey ? 'invalid or revoked ingest key' : 'missing ingest key',
+      };
     }
     const validation = validateBatch(body);
     if (!validation.ok) {
       return { ok: false, status: 400, error: 'invalid v1 batch' };
     }
     const batch: EventBatchV1 = validation.batch;
-    // Clock skew: reject the batch if any event timestamp is too far from now.
     for (const event of batch.events) {
       if (Math.abs(event.timestamp - now) > MAX_CLOCK_SKEW_MS) {
         return { ok: false, status: 400, error: 'event timestamp outside clock-skew window' };
       }
     }
-    const runtime = batch.runtime;
     const batchId = batch.batch_id ?? (await legacyBatchID(batch));
     const seen = await this.repos.dedupe.markSeen(
       keyRecord.app_id,
@@ -122,35 +125,101 @@ export class AppHealthService {
       now,
     );
     if (!seen) return { ok: true, accepted: 0, duplicates: batch.events.length };
-    const acceptedEvents = batch.events;
-    const accepted = acceptedEvents.length;
     try {
-      await this.repos.inventory?.recordObserved(
-        keyRecord.app_id,
-        keyRecord.environment_id,
-        acceptedEvents,
+      return await this.persistEvents(
+        keyRecord,
+        batch.runtime,
+        batch.release,
+        batch.events,
+        0,
+        now,
       );
-      await this.repos.failures?.recordFailures(
-        keyRecord.app_id,
-        keyRecord.environment_id,
-        acceptedEvents,
-      );
-      if (this.repos.buckets.upsertEvents) {
-        await this.repos.buckets.upsertEvents(
-          keyRecord.app_id,
-          keyRecord.environment_id,
-          runtime,
-          batch.release,
-          acceptedEvents,
-        );
-      } else {
-        for (const event of acceptedEvents) await this.applyEvent(keyRecord, event);
-      }
     } catch (error) {
       await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, batchId);
       throw error;
     }
-    if (accepted > 0) {
+  }
+
+  /** Resolve one environment-scoped ingest key before decoding an OTLP payload. */
+  async verifyIngestKey(rawKey: string): Promise<KeyRecordV1 | null> {
+    if (!rawKey) return null;
+    return this.repos.keys.verifyKey(rawKey);
+  }
+
+  /** Process projected OTLP endpoint events through the shared aggregate path. */
+  async ingestEvents(
+    keyRecord: KeyRecordV1,
+    runtime: 'node' | 'go' | 'otel',
+    release: string | undefined,
+    events: readonly EndpointEvent[],
+    now: number,
+  ): Promise<IngestResult> {
+    for (const event of events) {
+      if (Math.abs(event.timestamp - now) > MAX_CLOCK_SKEW_MS) {
+        return { ok: false, status: 400, error: 'event timestamp outside clock-skew window' };
+      }
+    }
+
+    const acceptedEvents: EndpointEvent[] = [];
+    const acceptedEventIds: string[] = [];
+    let duplicates = 0;
+    for (const event of events) {
+      const seen = await this.repos.dedupe.markSeen(
+        keyRecord.app_id,
+        keyRecord.environment_id,
+        event.event_id,
+        now,
+      );
+      if (!seen) {
+        duplicates += 1;
+        continue;
+      }
+      acceptedEvents.push(event);
+      acceptedEventIds.push(event.event_id);
+    }
+
+    try {
+      return await this.persistEvents(keyRecord, runtime, release, acceptedEvents, duplicates, now);
+    } catch (error) {
+      await Promise.all(
+        acceptedEventIds.map((eventId) =>
+          this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, eventId),
+        ),
+      );
+      throw error;
+    }
+  }
+
+  private async persistEvents(
+    keyRecord: KeyRecordV1,
+    runtime: 'node' | 'go' | 'otel',
+    release: string | undefined,
+    acceptedEvents: readonly EndpointEvent[],
+    duplicates: number,
+    now: number,
+  ): Promise<IngestResult> {
+    await this.repos.inventory?.recordObserved(
+      keyRecord.app_id,
+      keyRecord.environment_id,
+      acceptedEvents,
+    );
+    await this.repos.failures?.recordFailures(
+      keyRecord.app_id,
+      keyRecord.environment_id,
+      acceptedEvents,
+    );
+    if (this.repos.buckets.upsertEvents) {
+      await this.repos.buckets.upsertEvents(
+        keyRecord.app_id,
+        keyRecord.environment_id,
+        runtime,
+        release,
+        acceptedEvents,
+      );
+    } else {
+      for (const event of acceptedEvents) await this.applyEvent(keyRecord, event);
+    }
+    if (acceptedEvents.length > 0) {
       await this.repos.installation.recordIngest(
         keyRecord.app_id,
         keyRecord.environment_id,
@@ -158,10 +227,10 @@ export class AppHealthService {
         now,
       );
     }
-    return { ok: true, accepted, duplicates: 0 };
+    return { ok: true, accepted: acceptedEvents.length, duplicates };
   }
 
-  private async applyEvent(keyRecord: KeyRecordV1, event: EventV1): Promise<void> {
+  private async applyEvent(keyRecord: KeyRecordV1, event: EndpointEvent): Promise<void> {
     const bucketStart = Math.floor(event.timestamp / BUCKET_MS) * BUCKET_MS;
     await this.repos.buckets.upsertBucket({
       app_id: keyRecord.app_id,
@@ -172,6 +241,7 @@ export class AppHealthService {
       statusIsError: isErrorStatus(event.status_code),
       durationMs: event.duration_ms,
       timestamp: event.timestamp,
+      upstreamSampled: event.upstream_sampled,
     });
   }
 

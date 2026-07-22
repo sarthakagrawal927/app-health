@@ -19,3 +19,20 @@ required setup.
 #### Scenario: Minimal Express installation
 - **WHEN** the operator installs the package and mounts middleware with a valid key
 - **THEN** observed Express requests are batched without requiring route registration, a contracts package, or Node startup flags
+
+### Requirement: Express records trusted templates only
+The Express adapter SHALL record matched Express route templates and SHALL drop
+an event when no matched string template is available rather than sending a
+concrete fallback path.
+
+#### Scenario: Unmatched request contains a private slug
+- **WHEN** Express returns a 404 for `/users/alice-private`
+- **THEN** the adapter records no event containing `alice-private`
+
+### Requirement: Node string fields are privacy bounded
+The Node SDK SHALL normalize route templates and SHALL omit optional release
+tags that contain characters outside the bounded release-token character set.
+
+#### Scenario: Configuration contains an unsafe release string
+- **WHEN** a release contains whitespace, path separators, query delimiters, or an email marker
+- **THEN** the SDK omits the release while continuing to batch valid endpoint events

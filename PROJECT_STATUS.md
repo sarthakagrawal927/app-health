@@ -4,20 +4,20 @@ Last updated: 2026-07-22
 
 ## Why / What
 
-App Health V0 gives a Go or Node application an ingest key and shows how every observed endpoint is performing.
+App Health V0 gives a service an ingest key and shows how every observed endpoint is performing.
 
-**Users:** A developer or operator who wants immediate endpoint health after installing one small SDK.
+**Users:** A developer or operator who wants immediate endpoint health after installing one small SDK or connecting an existing OpenTelemetry pipeline.
 
-**IN scope:** App/environment creation, one ingest key, Express, Echo, and Go `net/http` middleware, asynchronous endpoint summaries, aggregate-only storage, and a 15-minute/1-hour/24-hour observed-endpoint performance table.
+**IN scope:** App/environment creation, one ingest key, Express, Echo, Go `net/http`, and OTLP/HTTP trace projection, asynchronous endpoint summaries, aggregate-only storage, and a 15-minute/1-hour/24-hour observed-endpoint performance table.
 
-**OUT of scope:** Unobserved source-route discovery, Problems/incidents, raw logs, request or response content, user identity, traces, AI, alerts, deployment recovery, GitHub installation, teams/roles, and billing.
+**OUT of scope:** Unobserved source-route discovery, Problems/incidents, raw logs, stored trace exploration, request or response content, user identity, AI, alerts, deployment recovery, GitHub installation, teams/roles, and billing.
 
 ## Dependencies
 
 ### External
 
 - Cloudflare Worker, D1 control-plane plus normalized endpoint inventory, Workers Analytics Engine telemetry, and a dedicated single-owner Worker secret are the production architecture. The Worker, APAC D1 resource, secrets, both custom hostnames, and corrected Node/Go canary are live on the existing Workers subscription. No additional Cloudflare subscription is approved.
-- Node 20+ with Express and Go 1.22+ with Echo or `net/http` are the supported V0 runtime surfaces.
+- Node 20+ with Express, Go 1.22+ with Echo or `net/http`, and existing OpenTelemetry Collectors using OTLP/HTTP are the supported V0 runtime surfaces.
 
 ### Internal
 
@@ -41,10 +41,12 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - 2026-07-21 — made the Node SDK release-ready as `@saas-maker/app-health` with ESM/CommonJS/types and external tarball proofs; added the Go 1.22-compatible Echo adapter, public framework record API, private-module install path, and route/error/panic/privacy/outage integration coverage
 - 2026-07-21 — reduced D1 dedupe from one row per request to one row per SDK batch; retained parameter-free 4xx/5xx details for 24 hours while all requests remain histogram-aggregated for pXX metrics
 - 2026-07-22 — added an owner-authenticated, bounded recent-failure read path and a trust-focused Data received dashboard that shows retained failures, the exact accepted field contract, aggregate-only boundaries, and data that is never collected; responsive and accessibility review passes completed
+- 2026-07-21 — hardened SDK string privacy so official adapters never send unmatched concrete paths and unsafe release strings are omitted; added Go 1.22 ServeMux pattern resolution, optimized UUID generation, and measured approximately 1.7 microseconds serial / 0.04 microseconds 8-way parallel incremental Echo overhead
+- 2026-07-22 — added authenticated OTLP/HTTP protobuf and JSON ingestion for existing OpenTelemetry pipelines, strict server-span projection, retry-stable deduplication, sampling provenance, Collector onboarding, and sampled-estimate disclosure
 
 ## Products
 
-- Private GitHub repository and local development checkout.
+- Public GitHub repository and local development checkout.
 - Local implemented surfaces: operator web application, Cloudflare-compatible ingest/API service, Node SDK, and Go SDK.
 
 ## Features (shipped)
@@ -57,10 +59,11 @@ App Health V0 gives a Go or Node application an ingest key and shows how every o
 - **End-to-end local proof:** the Express and Go examples each sent `/health`, `/users/:id`, and `/orders` through the same local ingest and query APIs used by the dashboard; both runtimes reached connected state and the aggregates updated.
 - **Storage-bounded ingest:** retry-stable batch IDs reduce temporary D1 dedupe rows by up to 100× at the default batch size; successful requests stay aggregate-only and individual 4xx/5xx details expire after 24 hours.
 - **Collection transparency:** an on-demand dashboard view shows the latest 50 retained 4xx/5xx failures, exact accepted telemetry fields, storage/retention boundaries, excluded payload and identity data, contract provenance, and last-refresh evidence without polling or adding storage.
+- **Existing OpenTelemetry:** authenticated `/v1/traces` intake accepts bounded OTLP/HTTP protobuf or JSON, projects only trusted HTTP server endpoint summaries, reuses the existing aggregate pipeline, and discloses upstream trace sampling in the API and dashboard.
 
 ## Todo / Planned / Deferred / Blocked
 
-1. **Deferred:** the broader owner-first Problem workflow in `build-app-health-mvp` until the endpoint V0 earns expansion.
+1. **Deferred:** the broader owner-first Problem workflow remains outside V0 until endpoint health earns expansion; its superseded planning change is archived rather than presented as active work.
 2. **Verification:** the injected-failure D1, owner identity, host-boundary,
    ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
    and browser non-persistence matrices are covered locally. The live dashboard

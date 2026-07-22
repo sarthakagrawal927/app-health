@@ -62,7 +62,7 @@ func TestMiddleware_ServeMuxPattern(t *testing.T) {
 // custom status.
 func TestMiddleware_CustomStatusAndBody(t *testing.T) {
 	rs := newRecordingServer()
-	c := newTestClient(t, rs, Config{})
+	c := newTestClient(t, rs, Config{RouteResolver: func(*http.Request) string { return "/teapot" }})
 
 	h := c.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(418)
@@ -87,7 +87,7 @@ func TestMiddleware_CustomStatusAndBody(t *testing.T) {
 // 4.3: default 200 is recorded when the handler never calls WriteHeader.
 func TestMiddleware_DefaultStatusOK(t *testing.T) {
 	rs := newRecordingServer()
-	c := newTestClient(t, rs, Config{})
+	c := newTestClient(t, rs, Config{RouteResolver: func(*http.Request) string { return "/x" }})
 
 	h := c.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("ok"))
@@ -107,7 +107,7 @@ func TestMiddleware_DefaultStatusOK(t *testing.T) {
 // 4.3: http.Flusher is preserved through the wrapper.
 func TestMiddleware_PreservesFlusher(t *testing.T) {
 	rs := newRecordingServer()
-	c := newTestClient(t, rs, Config{})
+	c := newTestClient(t, rs, Config{RouteResolver: func(*http.Request) string { return "/panic" }})
 
 	h := c.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f, ok := w.(http.Flusher)
@@ -182,7 +182,7 @@ func TestMiddleware_PreservesPusher(t *testing.T) {
 // panic propagates to the caller (the surrounding server's recovery).
 func TestMiddleware_PreservesPanic(t *testing.T) {
 	rs := newRecordingServer()
-	c := newTestClient(t, rs, Config{})
+	c := newTestClient(t, rs, Config{RouteResolver: func(*http.Request) string { return "/panic" }})
 
 	mw := c.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		panic("boom")
@@ -259,7 +259,7 @@ func TestMiddleware_DropsOversizedRoutes(t *testing.T) {
 	t.Run("resolver", func(t *testing.T) {
 		c := &Client{cfg: Config{RouteResolver: func(*http.Request) string { return oversized }}}
 		req := httptest.NewRequest("GET", "/fallback", nil)
-		if got := c.resolveRoute(req); got != "" {
+		if got := c.resolveRoute(req, ""); got != "" {
 			t.Fatalf("expected oversized resolver route to be dropped, got %q", got)
 		}
 	})
@@ -270,47 +270,37 @@ func TestMiddleware_DropsOversizedRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("fallback", func(t *testing.T) {
+	t.Run("no pattern", func(t *testing.T) {
 		c := &Client{}
 		req := httptest.NewRequest("GET", oversized, nil)
-		if got := c.resolveRoute(req); got != "" {
-			t.Fatalf("expected oversized fallback route to be dropped, got %q", got)
+		if got := c.resolveRoute(req, ""); got != "" {
+			t.Fatalf("expected request without a template to be dropped, got %q", got)
 		}
 	})
 }
 
-// 4.2: conservative fallback normalizes numeric and UUID segments when no
-// pattern or resolver is available.
-func TestMiddleware_NormalizationFallback(t *testing.T) {
+// Concrete paths are never used as a fallback because arbitrary string
+// segments may contain private customer data.
+func TestMiddleware_DropsRequestWithoutTrustedTemplate(t *testing.T) {
 	rs := newRecordingServer()
 	c := newTestClient(t, rs, Config{})
 
 	h := c.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
-	cases := map[string]string{
-		"/users/42":  "/users/:id",
-		"/users/abc": "/users/abc",
-		"/u/550e8400-e29b-41d4-a716-446655440000/posts": "/u/:uuid/posts",
-		"/orders/1001/items":                            "/orders/:id/items",
-		"/health":                                       "/health",
+	paths := []string{
+		"/users/42",
+		"/users/alice-private",
+		"/u/550e8400-e29b-41d4-a716-446655440000/posts",
+		"/orders/1001/items",
+		"/health",
 	}
-	for path, want := range cases {
+	for _, path := range paths {
 		doRequest(t, h, "GET", path, nil, nil)
-		_ = want
 	}
-	if !waitFor(t, 2*time.Second, func() bool { return len(rs.events()) == len(cases) }) {
-		t.Fatalf("expected %d events, got %d", len(cases), len(rs.events()))
-	}
-	// Verify each expected normalized route appears at least once.
-	got := map[string]bool{}
-	for _, e := range rs.events() {
-		got[e.Route] = true
-	}
-	for _, want := range cases {
-		if !got[want] {
-			t.Fatalf("expected normalized route %q in %v", want, got)
-		}
+	time.Sleep(30 * time.Millisecond)
+	if got := rs.events(); len(got) != 0 {
+		t.Fatalf("expected no events without a trusted route template, got %+v", got)
 	}
 }
 

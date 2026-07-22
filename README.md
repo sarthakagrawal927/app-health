@@ -1,10 +1,11 @@
 # app-health
 
-App Health V0 gives a Go or Node application an ingest key and shows how every
-observed endpoint is performing. It includes Express, Echo, and `net/http` SDKs,
-aggregate-only ingest, and a responsive operator dashboard. Local development
-is credential-free; the production path targets Cloudflare D1 and Workers
-Analytics Engine with a dedicated single-owner Worker secret.
+App Health V0 gives a service an ingest key and shows how every observed
+endpoint is performing. It accepts an existing OpenTelemetry trace pipeline or
+the Express, Echo, and `net/http` SDKs, then provides aggregate-only ingest and
+a responsive operator dashboard. Local development is credential-free; the
+production path targets Cloudflare D1 and Workers Analytics Engine with a
+dedicated single-owner Worker secret.
 
 ## Repository layout
 
@@ -17,7 +18,8 @@ packages/
               contracts with zod runtime validation and canonical fixtures
   node/       @saas-maker/app-health client and Express adapter
   go/         Go 1.22 client with net/http and Echo adapters
-openspec/changes/build-endpoint-health-v0/   Active V0 OpenSpec change
+openspec/specs/   Canonical behavior specifications
+openspec/changes/archive/   Completed and superseded change history
 ```
 
 ## Runtime dependencies (and why)
@@ -25,18 +27,19 @@ openspec/changes/build-endpoint-health-v0/   Active V0 OpenSpec change
 V0 keeps the dependency surface small because both SDKs eventually run inside
 customer request paths.
 
-| Dependency                                                                                                | Where                                                | Why                                                                                                         |
-| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `zod`                                                                                                     | packages/contracts                                   | Runtime validation of v1 ingest/query payloads. Single, well-vetted library; reused by worker and node SDK. |
-| `react`, `react-dom`                                                                                      | apps/web                                             | Operator dashboard shell. Required by the Vite + React stack.                                               |
-| `vite`, `@vitejs/plugin-react`                                                                            | apps/web (dev)                                       | Local dev server and production build of the operator shell.                                                |
-| `vitest`, `jsdom`, `@testing-library/react`                                                               | apps/web (dev)                                       | Component tests for the dashboard shell.                                                                    |
-| `vitest`                                                                                                  | packages/contracts, packages/node, apps/worker (dev) | Contract and worker unit tests.                                                                             |
-| `@cloudflare/workers-types`                                                                               | apps/worker (dev)                                    | Type definitions for the Worker `fetch` handler. No runtime dependency.                                     |
-| `typescript`, `eslint`, `prettier`, `typescript-eslint`, `@eslint/js`, `eslint-config-prettier`, `rimraf` | root (dev)                                           | Shared typecheck, lint, format, and clean tooling.                                                          |
-| `tsup`                                                                                                    | packages/node (dev)                                  | Produces the public SDK's ESM, CommonJS, and declaration artifacts.                                         |
-| Go standard library                                                                                       | packages/go core                                     | Bounded queue, delivery, diagnostics, and `net/http` middleware.                                            |
-| `github.com/labstack/echo/v4`                                                                             | packages/go/echo                                     | Framework route-template and response/error integration; v4.12 is the Go 1.22-compatible minimum.           |
+| Dependency                                                                                                | Where                                                | Why                                                                                                          |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `zod`                                                                                                     | packages/contracts                                   | Runtime validation of v1 ingest/query payloads. Single, well-vetted library; reused by worker and node SDK.  |
+| `react`, `react-dom`                                                                                      | apps/web                                             | Operator dashboard shell. Required by the Vite + React stack.                                                |
+| `vite`, `@vitejs/plugin-react`                                                                            | apps/web (dev)                                       | Local dev server and production build of the operator shell.                                                 |
+| `vitest`, `jsdom`, `@testing-library/react`                                                               | apps/web (dev)                                       | Component tests for the dashboard shell.                                                                     |
+| `vitest`                                                                                                  | packages/contracts, packages/node, apps/worker (dev) | Contract and worker unit tests.                                                                              |
+| `@cloudflare/workers-types`                                                                               | apps/worker (dev)                                    | Type definitions for the Worker `fetch` handler. No runtime dependency.                                      |
+| `@bufbuild/protobuf`                                                                                      | apps/worker                                          | Bounded protobuf wire reader/writer used to project OTLP traces without adding an OpenTelemetry SDK runtime. |
+| `typescript`, `eslint`, `prettier`, `typescript-eslint`, `@eslint/js`, `eslint-config-prettier`, `rimraf` | root (dev)                                           | Shared typecheck, lint, format, and clean tooling.                                                           |
+| `tsup`                                                                                                    | packages/node (dev)                                  | Produces the public SDK's ESM, CommonJS, and declaration artifacts.                                          |
+| Go standard library                                                                                       | packages/go core                                     | Bounded queue, delivery, diagnostics, and `net/http` middleware.                                             |
+| `github.com/labstack/echo/v4`                                                                             | packages/go/echo                                     | Framework route-template and response/error integration; v4.12 is the Go 1.22-compatible minimum.            |
 
 `APP_HEALTH_MODE=local` uses the in-memory adapter. Production mode requires a
 bound D1 database, Analytics Engine dataset, read-scoped query-token secret,
@@ -121,6 +124,45 @@ Complete runnable examples live in `examples/go-echo` and `examples/node`.
 The Echo example intentionally consumes a tagged module without a
 local `replace`, so it also acts as a release-distribution canary.
 
+## Connect an existing OpenTelemetry pipeline
+
+Services that already send traces through an OpenTelemetry Collector do not
+need an App Health SDK. Add the standard OTLP/HTTP exporter below alongside the
+exporters already present in the traces pipeline:
+
+```yaml
+exporters:
+  otlphttp/app_health:
+    traces_endpoint: https://ingest.sassmaker.com/v1/traces
+    headers:
+      Authorization: Bearer ${env:APP_HEALTH_INGEST_KEY}
+
+service:
+  pipelines:
+    traces:
+      # Keep the pipeline's existing receivers, processors, and exporters.
+      exporters: [your_existing_exporter, otlphttp/app_health]
+```
+
+The endpoint accepts OTLP/HTTP protobuf or JSON and bounded gzip compression.
+It projects only server spans that contain a trusted `http.route`, using the
+current HTTP semantic attributes (`http.request.method` and
+`http.response.status_code`) or their legacy aliases (`http.method` and
+`http.status_code`). `service.version` is used as the optional release.
+
+App Health discards the trace and every unrelated attribute after projecting
+method, normalized route, status, duration, timestamp, and optional release. It
+does not retain trace/span IDs, URLs, query strings, headers, identities,
+events, links, logs, bodies, or stack data. Trace pipelines may sample before
+export, so the dashboard labels all OTel-derived request counts, error rates,
+and latency figures as sampled estimates rather than complete traffic totals.
+
+Run the focused local ingestion checks with:
+
+```bash
+pnpm --filter @app-health/worker exec vitest run test/otlp.test.ts
+```
+
 ## SDK release procedure
 
 SDK releases are explicit rather than automatic:
@@ -130,8 +172,14 @@ pnpm --filter @saas-maker/app-health run pack:verify
 npm whoami
 npm publish packages/node --access public
 
-git tag packages/go/echo/v5.1.0
-git push origin packages/go/echo/v5.1.0
+GO_CORE_VERSION=0.1.5
+git tag "packages/go/v${GO_CORE_VERSION}"
+git push origin "packages/go/v${GO_CORE_VERSION}"
+
+# When the separate Echo v5 module changes:
+ECHO_V5_VERSION=5.1.1
+git tag "packages/go/echo/v${ECHO_V5_VERSION}"
+git push origin "packages/go/echo/v${ECHO_V5_VERSION}"
 ```
 
 Only publish or tag the exact pushed commit after repository and consumer
@@ -211,16 +259,21 @@ the dashboard shows those metric values as unavailable, never as false zeros.
 
 ## Privacy boundary
 
-V0 collects **only** method, normalized route, status code, duration,
-timestamp, and optional release. It MUST NOT collect headers, cookies, query
-values, route parameter values, request or response bodies, user identity,
-logs, stack traces, or spans. The contract validators reject unknown fields;
-both SDKs enforce the same boundary at capture time.
+V0 stores **only** method, normalized route, status code, duration, timestamp,
+and optional release. It MUST NOT store headers, cookies, query values, route
+parameter values, request or response bodies, user identity, logs, stack
+traces, or spans. The OTLP endpoint projects this allowlist from eligible
+server spans and discards the rest; contract validators reject unknown fields,
+and both SDKs enforce the same boundary at capture time. Official adapters drop
+an event when no trusted framework route template exists rather than sending a
+concrete request path. Optional release strings use a bounded machine-safe
+character set; unsafe free-form values are omitted.
 
 ## Production boundary
 
 - `health.sassmaker.com` is the private owner-key-protected dashboard and owner API.
-- `ingest.sassmaker.com/v1/ingest` accepts only environment-scoped bearer keys.
+- `ingest.sassmaker.com/v1/ingest` and `/v1/traces` accept only
+  environment-scoped bearer keys.
 - D1 stores control-plane records, bounded event-ID deduplication, and only the
   normalized endpoint identity plus first/last seen; Analytics Engine stores
   approved aggregate endpoint dimensions and counts.
@@ -234,5 +287,5 @@ both SDKs enforce the same boundary at capture time.
 The endpoint-only V0 is live on Cloudflare with both approved hostnames, D1,
 Analytics Engine, and owner/ingest key boundaries. Real Node and Go canaries
 proved creation, key handoff, ingest, connected state, and normalized endpoint
-inventory. Alerts, traces, logs, and broader incident workflows remain
-explicitly out of scope.
+inventory. Alerts, stored trace exploration, logs, and broader incident
+workflows remain explicitly out of scope.

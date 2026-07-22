@@ -12,7 +12,8 @@
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@app-health/contracts": "workspace:*"
+    "@app-health/contracts": "workspace:*",
+    "@bufbuild/protobuf": "2.13.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260702.1",

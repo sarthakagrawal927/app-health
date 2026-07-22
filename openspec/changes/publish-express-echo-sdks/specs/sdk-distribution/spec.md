@@ -30,8 +30,13 @@ version or Go module tag.
 ### Requirement: Distribution preserves the privacy contract
 Published artifacts MUST NOT add capture of headers, cookies, query values,
 route parameter values, request or response bodies, identity, logs, stacks, or
-spans.
+spans. Official adapters MUST prefer omission to transmitting an unmatched
+concrete path, and SDK-owned optional strings MUST be bounded and validated.
 
 #### Scenario: Framework request carries sensitive content
 - **WHEN** Express or Echo handles a request with private headers, parameters, query values, and body content
 - **THEN** the emitted package payload contains only the approved endpoint summary fields
+
+#### Scenario: No safe route identity exists
+- **WHEN** an adapter cannot obtain a trusted framework route template
+- **THEN** it drops the endpoint event without delaying or changing the application response

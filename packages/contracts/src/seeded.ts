@@ -180,6 +180,7 @@ export function mergeBuckets(
       p95_ms,
       last_seen,
       health_state: healthState({ request_count, error_rate, p95_ms }),
+      ...(list.some((bucket) => bucket.upstream_sampled) ? { upstream_sampled: true } : {}),
     });
   }
   // deterministic default sort: unhealthy > degraded > healthy > insufficient-data,

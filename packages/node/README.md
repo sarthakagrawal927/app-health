@@ -4,6 +4,8 @@ Privacy-first endpoint health telemetry for Node.js 20+ and Express. The SDK
 records only the HTTP method, framework route template, response status,
 duration, timestamp, and optional release. It does not read headers, query
 values, route parameters, request or response bodies, cookies, or identities.
+Unmatched concrete paths are dropped, and unsafe free-form release strings are
+omitted.
 
 ## Express
 

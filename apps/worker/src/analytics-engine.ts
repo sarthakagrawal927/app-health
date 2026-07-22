@@ -20,6 +20,7 @@ interface QueryRow {
   error_count: string | number;
   duration_sum_ms: string | number;
   last_seen: string | number | null;
+  upstream_sampled?: string | number | null;
 }
 
 const DATASET = 'app_health_endpoint_v1';
@@ -60,6 +61,7 @@ export class AnalyticsEngineBuckets implements BucketRepository {
       status_code: number;
       duration_ms: number;
       release?: string;
+      upstream_sampled?: boolean;
     }[],
   ): Promise<void> {
     const scope = await telemetryScope(appId, envId);
@@ -74,6 +76,7 @@ export class AnalyticsEngineBuckets implements BucketRepository {
         errors: number;
         duration: number;
         lastSeen: number;
+        upstreamSampled: boolean;
       }
     >();
     for (const event of events) {
@@ -89,11 +92,13 @@ export class AnalyticsEngineBuckets implements BucketRepository {
         errors: 0,
         duration: 0,
         lastSeen: 0,
+        upstreamSampled: false,
       };
       point.count += 1;
       point.errors += event.status_code >= 500 ? 1 : 0;
       point.duration += event.duration_ms;
       point.lastSeen = Math.max(point.lastSeen, event.timestamp);
+      point.upstreamSampled ||= event.upstream_sampled === true;
       points.set(key, point);
     }
     if (points.size > MAX_POINTS)
@@ -101,7 +106,14 @@ export class AnalyticsEngineBuckets implements BucketRepository {
     for (const point of points.values()) {
       this.dataset.writeDataPoint({
         indexes: [scope],
-        blobs: [point.method, point.route, String(point.bucket), runtime, point.release],
+        blobs: [
+          point.method,
+          point.route,
+          String(point.bucket),
+          runtime,
+          point.release,
+          point.upstreamSampled ? 'sampled' : '',
+        ],
         doubles: [point.count, point.errors, point.duration, point.lastSeen],
       });
     }
@@ -113,7 +125,7 @@ export class AnalyticsEngineBuckets implements BucketRepository {
     // Analytics Engine is append-only. This exact release was a manually
     // injected connectivity check, not application traffic, so query-tombstone
     // it after its durable D1 inventory and installation state are removed.
-    const sql = `SELECT blob1 AS method, blob2 AS route, blob3 AS latency_bucket, SUM(double1 * _sample_interval) AS request_count, SUM(double2 * _sample_interval) AS error_count, SUM(double3 * _sample_interval) AS duration_sum_ms, MAX(double4) AS last_seen FROM ${DATASET} WHERE index1 = '${scope}' AND blob5 != 'polaris-staging-canary' AND timestamp >= NOW() - ${INTERVALS[window]} GROUP BY method, route, latency_bucket ORDER BY method, route, latency_bucket`;
+    const sql = `SELECT blob1 AS method, blob2 AS route, blob3 AS latency_bucket, SUM(double1 * _sample_interval) AS request_count, SUM(double2 * _sample_interval) AS error_count, SUM(double3 * _sample_interval) AS duration_sum_ms, MAX(double4) AS last_seen, MAX(IF(blob6 = 'sampled', 1, 0)) AS upstream_sampled FROM ${DATASET} WHERE index1 = '${scope}' AND blob5 != 'polaris-staging-canary' AND timestamp >= NOW() - ${INTERVALS[window]} GROUP BY method, route, latency_bucket ORDER BY method, route, latency_bucket`;
     const rows = await this.query(sql);
     const grouped = new Map<string, BucketV1>();
     for (const row of rows) {
@@ -128,6 +140,7 @@ export class AnalyticsEngineBuckets implements BucketRepository {
         error_count: 0,
         duration_sum_ms: 0,
         last_seen: null,
+        ...(Number(row.upstream_sampled) > 0 ? { upstream_sampled: true } : {}),
         histogram: new Array<number>(LATENCY_HISTOGRAM_BUCKETS).fill(0),
       };
       const count = Math.max(0, Math.round(Number(row.request_count)));
@@ -144,6 +157,7 @@ export class AnalyticsEngineBuckets implements BucketRepository {
       bucket.duration_sum_ms += Math.max(0, Math.round(Number(row.duration_sum_ms)));
       const lastSeen = row.last_seen === null ? null : Number(row.last_seen);
       if (Number.isFinite(lastSeen)) bucket.last_seen = Math.max(bucket.last_seen ?? 0, lastSeen!);
+      if (Number(row.upstream_sampled) > 0) bucket.upstream_sampled = true;
       grouped.set(key, bucket);
     }
     return [...grouped.values()];

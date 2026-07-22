@@ -16,6 +16,9 @@ Express for Node.js and Echo for Go.
   retries, redaction, and shutdown mechanics inside the SDK.
 - Keep both delivery clients bounded, asynchronous, fail-open, and independent
   from framework request handling.
+- Make string privacy automatic by accepting framework route templates only,
+  dropping unmatched concrete paths, and rejecting unsafe release tags rather
+  than attempting to transmit reversibly masked request data.
 - Add package-consumer tests that install or import packed artifacts rather
   than relying only on workspace source resolution.
 - Show copy-ready Express and Echo installation snippets in the private App

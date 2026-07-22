@@ -39,8 +39,8 @@ the ingest URL, queue, batch, timeout, retry, redaction, or shutdown mechanics.
 
 ### Requirement: Third-party router naming escape hatch
 The Go SDK SHALL accept an optional route resolver for generic `net/http`
-middleware, SHALL use a conservative fallback when no framework pattern is
-available, and SHALL provide a dedicated Echo adapter when Echo is used.
+middleware, SHALL drop events when no trusted framework pattern is available,
+and SHALL provide a dedicated Echo adapter when Echo is used.
 
 #### Scenario: Router supplies a route resolver
 - **WHEN** a configured resolver returns `/orders/:id`
@@ -49,3 +49,15 @@ available, and SHALL provide a dedicated Echo adapter when Echo is used.
 #### Scenario: Echo adapter resolves a route
 - **WHEN** an Echo context reports `/orders/:id`
 - **THEN** the SDK uses the Echo template without requiring a custom resolver
+
+#### Scenario: Generic handler has no trusted route template
+- **WHEN** a generic `net/http` handler completes without a resolver or ServeMux pattern
+- **THEN** the SDK drops the event instead of sending its concrete request path
+
+### Requirement: Go string fields are privacy bounded
+The Go SDK SHALL validate route templates and SHALL omit optional release tags
+that contain characters outside the bounded release-token character set.
+
+#### Scenario: Configuration contains an unsafe release string
+- **WHEN** a release contains whitespace, path separators, query delimiters, or an email marker
+- **THEN** the SDK omits the release while preserving request handling and endpoint delivery

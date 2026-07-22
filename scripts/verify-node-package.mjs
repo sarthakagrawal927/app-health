@@ -13,7 +13,12 @@ try {
     cwd: packageDir,
     encoding: 'utf8',
   });
-  const [packed] = JSON.parse(packOutput);
+  const packResult = JSON.parse(packOutput);
+  const packed = Array.isArray(packResult)
+    ? packResult[0]
+    : packResult?.filename
+      ? packResult
+      : Object.values(packResult).find((result) => result?.filename);
   if (!packed?.filename || !Array.isArray(packed.files)) {
     throw new Error('npm pack did not return a package manifest');
   }

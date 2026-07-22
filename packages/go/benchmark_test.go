@@ -69,12 +69,12 @@ func BenchmarkBareHandler(b *testing.B) {
 	}
 }
 
-// BenchmarkNormalizeRouteFallback measures the conservative fallback cost.
-func BenchmarkNormalizeRouteFallback(b *testing.B) {
+// BenchmarkNormalizeRouteTemplate measures trusted-template normalization.
+func BenchmarkNormalizeRouteTemplate(b *testing.B) {
 	path := "/u/550e8400-e29b-41d4-a716-446655440000/posts/123/comments/456"
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = normalizeRouteFallback(path)
+		_ = normalizeRouteTemplate(path)
 	}
 }
 

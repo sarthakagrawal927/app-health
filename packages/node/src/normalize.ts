@@ -3,9 +3,9 @@
 // The V1 event only carries method, route template, status_code, duration_ms,
 // timestamp, and optional release. This module normalizes framework-provided
 // values into the bounded, uppercase, slash-prefixed shape the contract
-// requires, with a conservative fallback that collapses obvious numeric and
-// UUID path segments into a single `:id` placeholder when no framework route
-// template is available. It never reads headers, query, params, or bodies.
+// requires. Official adapters call this only with framework route templates;
+// they drop requests when no trusted template exists. It never reads headers,
+// query, params, or bodies.
 
 import {
   MAX_METHOD_LENGTH,
@@ -26,12 +26,12 @@ export function normalizeMethod(method: unknown): string | null {
 }
 
 /**
- * Conservative concrete-path fallback normalization.
+ * Normalize a trusted framework route template.
  *
- * Replaces segments that are clearly identifiers (all digits, or a UUID v4)
- * with `:id`. Other segments are preserved verbatim so distinct routes are
- * not accidentally merged. Query strings are never part of `pathname` from
- * Express, and we explicitly strip anything after `?` defensively.
+ * Replaces segments that are clearly identifiers (all digits, or an RFC 4122
+ * UUID) with `:id` as defense in depth. Official adapters never pass unmatched
+ * concrete paths to this function. Query strings and fragments are stripped
+ * defensively for framework and direct-client callers.
  */
 export function normalizeRoutePath(path: unknown): string | null {
   if (typeof path !== 'string') return null;
@@ -80,12 +80,22 @@ export function normalizeDuration(durationMs: unknown): number | null {
   return rounded;
 }
 
-/** Bound and validate an optional release tag. Returns undefined when absent. */
+const SAFE_RELEASE_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
+
+/**
+ * Bound an optional release tag to machine-safe version characters.
+ *
+ * Releases are operator metadata, never request metadata. Unsafe strings are
+ * omitted instead of partially redacted so emails, URLs, query strings, and
+ * free-form private values cannot accidentally become telemetry dimensions.
+ */
 export function normalizeRelease(release: unknown): string | undefined {
   if (release === undefined || release === null) return undefined;
   if (typeof release !== 'string') return undefined;
   const trimmed = release.trim();
+  if (trimmed !== release) return undefined;
   if (trimmed.length === 0 || trimmed.length > MAX_RELEASE_LENGTH) return undefined;
+  if (!SAFE_RELEASE_RE.test(trimmed)) return undefined;
   return trimmed;
 }
 

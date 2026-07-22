@@ -108,11 +108,17 @@ export interface BucketRepository {
   upsertBucket(
     bucket: Omit<
       BucketV1,
-      'request_count' | 'error_count' | 'duration_sum_ms' | 'last_seen' | 'histogram'
+      | 'request_count'
+      | 'error_count'
+      | 'duration_sum_ms'
+      | 'last_seen'
+      | 'histogram'
+      | 'upstream_sampled'
     > & {
       statusIsError: boolean;
       durationMs: number;
       timestamp: number;
+      upstreamSampled?: boolean;
     },
   ): Promise<void>;
   /** Return all buckets for the (app, environment) pair within [from, to]. */
@@ -129,6 +135,7 @@ export interface BucketRepository {
       status_code: number;
       duration_ms: number;
       release?: string;
+      upstream_sampled?: boolean;
     }[],
   ): Promise<void>;
 }
