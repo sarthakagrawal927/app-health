@@ -11,6 +11,9 @@ Express for Node.js and Echo for Go.
   package with a stable core client and Express adapter.
 - Change the Go module to the real repository path and add a first-class Echo
   middleware package that records Echo's normalized route template.
+- Expose one explicit Echo installation config containing only enablement,
+  environment, ingest key, and project name; keep ingest routing, batching,
+  retries, redaction, and shutdown mechanics inside the SDK.
 - Keep both delivery clients bounded, asynchronous, fail-open, and independent
   from framework request handling.
 - Add package-consumer tests that install or import packed artifacts rather
@@ -45,6 +48,8 @@ Express for Node.js and Echo for Go.
   documentation.
 - Changes the Go module path and adds Echo as an adapter dependency while
   preserving the standard-library core package.
+- Replaces the environment-variable-named Echo convenience function with a
+  small explicit app-facing contract.
 - Affects the setup UI and production dashboard deployment.
 - npm publication is an external release action and remains blocked until npm
   authentication is available; no credential is committed or printed.

@@ -184,9 +184,15 @@ describe('App Health V0 UI', () => {
     expect(screen.getByText(/@saas-maker\/app-health\/express/)).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Go + Echo' }));
     expect(
-      screen.getByText(/go get github\.com\/sarthakagrawal927\/app-health\/packages\/go@v0\.1\.0/),
+      screen.getByText(
+        /go get github\.com\/sarthakagrawal927\/app-health\/packages\/go\/echo\/v5@v5\.1\.0/,
+      ),
     ).toBeTruthy();
-    expect(screen.getByText(/apphealthecho\.Middleware/)).toBeTruthy();
+    expect(screen.getByText(/apphealthechov5\.Install/)).toBeTruthy();
+    expect(screen.getByText(/Enabled: true/)).toBeTruthy();
+    expect(screen.getByText(/Environment: "production"/)).toBeTruthy();
+    expect(screen.getByText(/Project: "orders-api"/)).toBeTruthy();
+    expect(screen.queryByText(/IngestURL/)).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).not.toContain('ahk_one_time_secret');
   });
 
