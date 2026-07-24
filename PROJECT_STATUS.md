@@ -48,6 +48,12 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
   Worker runtime reporting, `waitUntil` delivery, Worker onboarding, and a
   verified `0.2.1` JavaScript package ready for immutable GitHub Release
   distribution while npm publisher authentication remains unavailable
+- 2026-07-25 — deployed Worker version
+  `7f9e8fc5-c8af-4b73-add4-c8b76051cc06`, published the immutable public
+  GitHub Release `node-v0.2.1` with the verified npm tarball, and integrated
+  that exact asset into Free AI behind an optional ingest-key binding; Free
+  AI checks and privacy review pass, while its manual production workflow and
+  environment-scoped key remain operator-owned
 
 ## Products
 
@@ -59,6 +65,9 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 - **Development foundation:** pnpm TypeScript workspace plus Go 1.22 module, versioned runtime-validated endpoint contracts, equivalent Node/Go fixtures, local seeded Worker adapter, and green TypeScript/Go CI.
 - **Cloudflare production implementation:** D1 owns apps/environments/hashed keys/install state/bounded dedupe and only normalized endpoint identity plus first/last seen; Workers Analytics Engine owns sampled performance telemetry; a timing-safe owner Worker secret protects owner APIs; the dashboard retains that secret only in page memory; `workers.dev` is disabled; `health.sassmaker.com` and `ingest.sassmaker.com` are live boundaries.
 - **Node SDK:** publishable `@saas-maker/app-health` core plus `/express` adapter and bounded fail-open delivery with privacy, outage, retry, overflow, shutdown, package-consumer, and benchmark coverage.
+- **Node SDK release:** public `node-v0.2.1` GitHub Release with immutable
+  `saas-maker-app-health-0.2.1.tgz` asset and verified SHA-256
+  `3039a10809d7eefd3683d4fa2a3aff0c708b29ee52effe4819e11bf0e571890f`.
 - **Cloudflare JavaScript adapters:** optional `/hono` middleware and `/pages`
   wrapper preserve application responses, accept lazy no-op configuration,
   record only trusted framework route templates, and keep bounded delivery
@@ -82,3 +91,8 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
    ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
    and browser non-persistence matrices are covered locally. The live dashboard
    is connected and the production endpoint inventory is accepted.
+4. **Free AI pilot:** the exact `0.2.1` release asset and optional Hono
+   middleware are committed on `main`; checks and privacy review pass. Its
+   repository forbids agent-session deploys, so production deployment remains
+   a manual `workflow_dispatch`, and live connection additionally requires an
+   environment-scoped `APP_HEALTH_INGEST_KEY`.
