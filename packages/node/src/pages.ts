@@ -16,11 +16,11 @@ export interface PagesFunctionContext<
   Params extends string = string,
   Data extends Record<string, unknown> = Record<string, unknown>,
 > {
-  request: Request;
+  request: { readonly method: string };
   env: Environment;
   params: Record<Params, string | string[]>;
   data: Data;
-  next(input?: Request | string, init?: RequestInit): Promise<Response>;
+  next(input?: unknown, init?: unknown): Promise<{ readonly status: number }>;
   waitUntil(promise: Promise<unknown>): void;
 }
 
@@ -28,7 +28,10 @@ export type PagesFunctionHandler<
   Environment = Record<string, unknown>,
   Params extends string = string,
   Data extends Record<string, unknown> = Record<string, unknown>,
-> = (context: PagesFunctionContext<Environment, Params, Data>) => Response | Promise<Response>;
+  ResponseType extends { readonly status: number } = { readonly status: number },
+> = (
+  context: PagesFunctionContext<Environment, Params, Data>,
+) => ResponseType | Promise<ResponseType>;
 
 type PagesClientResolver<Environment, Params extends string, Data extends Record<string, unknown>> =
   | AppHealthClient
@@ -59,13 +62,14 @@ export function withPagesFunctionHealth<
   Environment = Record<string, unknown>,
   Params extends string = string,
   Data extends Record<string, unknown> = Record<string, unknown>,
+  ResponseType extends { readonly status: number } = { readonly status: number },
 >(
   options: PagesFunctionHealthOptions<Environment, Params, Data>,
-  handler: PagesFunctionHandler<Environment, Params, Data>,
-): PagesFunctionHandler<Environment, Params, Data> {
+  handler: PagesFunctionHandler<Environment, Params, Data, ResponseType>,
+): PagesFunctionHandler<Environment, Params, Data, ResponseType> {
   const route = normalizeRoutePath(options.route);
   const release = normalizeRelease(options.release);
-  return async (context): Promise<Response> => {
+  return async (context): Promise<ResponseType> => {
     const start = nowMs();
     try {
       const response = await handler(context);

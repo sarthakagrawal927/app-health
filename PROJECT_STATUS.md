@@ -46,7 +46,7 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 - 2026-07-22 — merged release PR #11 after matching TypeScript and Go CI, deployed Worker version `5b2cbee1-74e9-4eb8-a818-c7a2aa2edd37`, verified both custom domains and OTLP host/auth boundaries, and published Go core `v0.1.5`
 - 2026-07-25 — added privacy-safe Hono and Cloudflare Pages Functions adapters,
   Worker runtime reporting, `waitUntil` delivery, Worker onboarding, and a
-  verified `0.2.0` JavaScript package ready for immutable GitHub Release
+  verified `0.2.1` JavaScript package ready for immutable GitHub Release
   distribution while npm publisher authentication remains unavailable
 
 ## Products
@@ -74,7 +74,7 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 
 1. **Deferred:** the broader owner-first Problem workflow remains outside V0 until endpoint health earns expansion; its superseded planning change is archived rather than presented as active work.
 2. **Distribution:** npm publication remains externally gated because the
-   configured registry identity returns `E401 Unauthorized`. Version `0.2.0`
+   configured registry identity returns `E401 Unauthorized`. Version `0.2.1`
    is verified across ESM/CommonJS and all adapter subpaths and uses an
    immutable public GitHub Release asset as the supported fallback; no npm
    release is claimed.

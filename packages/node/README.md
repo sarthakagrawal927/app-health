@@ -43,7 +43,7 @@ Until npm publisher authentication is restored, install the same verified
 package from its immutable public release:
 
 ```bash
-npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.0/saas-maker-app-health-0.2.0.tgz
+npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz
 ```
 
 ```ts

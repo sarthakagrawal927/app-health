@@ -76,9 +76,9 @@ migration is validation and presentation only; no D1 schema change is needed.
 
 ### Use a GitHub Release asset as the authenticated-registry fallback
 
-The package version advances to `0.2.0`. The existing package verification
+The package version advances to `0.2.1`. The existing package verification
 builds a `.tgz`, tests its exports from an external fixture, and the release
-attaches that exact artifact to tag `node-v0.2.0`. Consumers pin the immutable
+attaches that exact artifact to tag `node-v0.2.1`. Consumers pin the immutable
 release URL. npm remains the preferred friendly install path and can publish
 the same version later if authentication becomes available. A moving branch or
 raw repository dependency was rejected because it is not immutable.
@@ -114,7 +114,7 @@ uploading the ingest secret remains a separate owner operation.
    tests.
 3. Run the full TypeScript and Go repository checks plus strict OpenSpec
    validation.
-4. Commit and push the green App Health release, create tag `node-v0.2.0`, and
+4. Commit and push the green App Health release, create tag `node-v0.2.1`, and
    attach the verified package tarball to a public GitHub Release.
 5. Install the immutable artifact in Free AI, add the optional middleware
    integration, validate, commit, push, deploy through its existing guard, and

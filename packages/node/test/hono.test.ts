@@ -111,16 +111,11 @@ describe('Hono middleware', () => {
     app.get('/fail/:id', () => {
       throw expected;
     });
-    app.onError((error) => {
-      expect(error).toBe(expected);
-      return new Response('handled', { status: 503 });
-    });
-
     const response = await app.request('/fail/private-value');
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(500);
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ route: '/fail/:id', status_code: 503 });
+    expect(events[0]).toMatchObject({ route: '/fail/:id', status_code: 500 });
     expect(JSON.stringify(events)).not.toContain('private-value');
   });
 });

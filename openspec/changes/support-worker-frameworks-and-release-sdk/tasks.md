@@ -11,7 +11,7 @@
 
 ## 3. Package and onboarding
 
-- [x] 3.1 Add Hono and Pages package exports, optional peer metadata, build entries, and version `0.2.0`
+- [x] 3.1 Add Hono and Pages package exports, optional peer metadata, build entries, and version `0.2.1`
 - [x] 3.2 Extend external tarball verification to import and exercise every adapter subpath
 - [x] 3.3 Add Hono, Pages Functions, and GitHub Release fallback instructions to the package, root, and dashboard onboarding
 
@@ -19,10 +19,10 @@
 
 - [x] 4.1 Run focused adapter/contract tests, the full TypeScript check, Go test/vet, package verification, and strict OpenSpec validation
 - [x] 4.2 Commit and push the synchronized App Health release commit
-- [ ] 4.3 Create tag and public GitHub Release `node-v0.2.0` with the exact verified tarball asset after npm authentication is rechecked
+- [ ] 4.3 Create tag and public GitHub Release `node-v0.2.1` with the exact verified tarball asset after npm authentication is rechecked
 
 ## 5. Fleet pilot
 
-- [ ] 5.1 Install the immutable `0.2.0` release asset in Free AI and register Hono middleware behind an optional environment binding
+- [ ] 5.1 Install the immutable `0.2.1` release asset in Free AI and register Hono middleware behind an optional environment binding
 - [ ] 5.2 Run Free AI checks and privacy review, then commit, push, deploy through the existing guard, and smoke the public routes
 - [ ] 5.3 Record that live App Health connection remains conditional on separately provisioning the environment-scoped ingest key
