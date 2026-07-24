@@ -182,6 +182,14 @@ describe('App Health V0 UI', () => {
 
     expect(await screen.findByText(/npm install @saas-maker\/app-health/)).toBeTruthy();
     expect(screen.getByText(/@saas-maker\/app-health\/express/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Hono Worker' }));
+    expect(screen.getByText(/@saas-maker\/app-health\/hono/)).toBeTruthy();
+    expect(screen.getByText(/runtime: 'worker'/)).toBeTruthy();
+    expect(screen.getByText(/disableTimer: true/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Pages Functions' }));
+    expect(screen.getByText(/@saas-maker\/app-health\/pages/)).toBeTruthy();
+    expect(screen.getByText(/withPagesFunctionHealth/)).toBeTruthy();
+    expect(screen.getByText(/route: '\/users\/:id'/)).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Go + Echo' }));
     expect(
       screen.getByText(
@@ -211,6 +219,16 @@ describe('App Health V0 UI', () => {
     expect(await screen.findByText('OpenTelemetry connected')).toBeTruthy();
     expect(screen.getByText(/OpenTelemetry pipeline/)).toBeTruthy();
     expect(screen.getAllByText('OTel sampled estimate')).toHaveLength(2);
+  });
+
+  it('identifies Cloudflare Worker traffic', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    installFetch({
+      status: { ...connected, runtime: 'worker' },
+    });
+    render(<App />);
+    expect(await screen.findByText('Cloudflare Worker connected')).toBeTruthy();
+    expect(screen.getByText(/Cloudflare Worker is sending endpoint summaries/)).toBeTruthy();
   });
 
   it('renders populated endpoint metrics and changes windows', async () => {

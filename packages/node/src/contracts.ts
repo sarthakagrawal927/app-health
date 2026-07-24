@@ -13,7 +13,7 @@ export const MAX_DURATION_MS = 600_000;
 export const MIN_STATUS_CODE = 100;
 export const MAX_STATUS_CODE = 599;
 
-export type RuntimeField = 'node' | 'go';
+export type RuntimeField = 'node' | 'worker' | 'go' | 'otel';
 
 export interface EventV1 {
   event_id: string;

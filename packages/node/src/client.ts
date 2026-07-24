@@ -42,6 +42,8 @@ export interface AppHealthClientOptions {
   endpoint: string;
   /** Optional release tag applied to every event unless overridden. */
   release?: string;
+  /** JavaScript runtime sending the batch. Defaults to `node`. */
+  runtime?: 'node' | 'worker';
   /** Maximum events buffered in memory before dropping. Default 10_000. */
   maxQueueSize?: number;
   /** Events per batch. Default 100 (must be <= MAX_BATCH_EVENTS). */
@@ -128,6 +130,10 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
   const now = options.now ?? (() => Date.now());
   const uuid = options.randomUUID ?? randomUUID;
   const defaultRelease = normalizeRelease(options.release);
+  const runtime = options.runtime ?? 'node';
+  if (runtime !== 'node' && runtime !== 'worker') {
+    throw new Error('@saas-maker/app-health: runtime must be `node` or `worker`');
+  }
 
   const diag = createDiagnostics();
   const queue: EventV1[] = [];
@@ -217,7 +223,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
     const batch = {
       batch_id: uuid(),
       schema_version: SCHEMA_VERSION,
-      runtime: 'node' as const,
+      runtime,
       ...(defaultRelease !== undefined ? { release: defaultRelease } : {}),
       events,
     };

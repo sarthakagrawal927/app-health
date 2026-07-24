@@ -31,6 +31,12 @@ try {
     'dist/express.js',
     'dist/express.cjs',
     'dist/express.d.ts',
+    'dist/hono.js',
+    'dist/hono.cjs',
+    'dist/hono.d.ts',
+    'dist/pages.js',
+    'dist/pages.cjs',
+    'dist/pages.d.ts',
   ];
   for (const path of required) {
     if (!paths.includes(path)) throw new Error(`packed package is missing ${path}`);
@@ -46,10 +52,14 @@ try {
     JSON.stringify({ name: 'app-health-consumer-smoke', private: true, type: 'module' }),
   );
   const tarball = join(temporaryDir, packed.filename);
-  execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball], {
-    cwd: consumerDir,
-    stdio: 'inherit',
-  });
+  execFileSync(
+    'npm',
+    ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball, 'hono@4.12.18'],
+    {
+      cwd: consumerDir,
+      stdio: 'inherit',
+    },
+  );
 
   const installedManifest = JSON.parse(
     readFileSync(
@@ -64,7 +74,24 @@ try {
 
   writeFileSync(
     join(consumerDir, 'smoke.mjs'),
-    `import { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\nif (typeof createAppHealthClient !== 'function' || typeof expressMiddleware !== 'function') process.exit(1);\n`,
+    `import { Hono } from 'hono';
+import { createAppHealthClient } from '@saas-maker/app-health';
+import { expressMiddleware } from '@saas-maker/app-health/express';
+import { honoMiddleware } from '@saas-maker/app-health/hono';
+import { withPagesFunctionHealth } from '@saas-maker/app-health/pages';
+if ([createAppHealthClient, expressMiddleware, honoMiddleware, withPagesFunctionHealth].some((value) => typeof value !== 'function')) process.exit(1);
+const events = [];
+const waits = [];
+const client = { record: (event) => events.push(event), flush: async () => {}, close: async () => {}, diagnostics: () => ({}) };
+const app = new Hono();
+app.use('*', honoMiddleware({ client }));
+app.get('/users/:id', (context) => context.text('ok'));
+const response = await app.request('/users/private', undefined, {}, { waitUntil: (promise) => waits.push(promise), passThroughOnException() {} });
+if (response.status !== 200 || events[0]?.route !== '/users/:id' || waits.length !== 1) process.exit(1);
+const pages = withPagesFunctionHealth({ client, route: '/pages/:id' }, async () => new Response('ok', { status: 201 }));
+const pageResponse = await pages({ request: new Request('https://example.test/pages/private'), env: {}, params: {}, data: {}, next: async () => new Response(), waitUntil: (promise) => waits.push(promise) });
+if (pageResponse.status !== 201 || events[1]?.route !== '/pages/:id') process.exit(1);
+`,
   );
   execFileSync(globalThis.process.execPath, ['smoke.mjs'], {
     cwd: consumerDir,
@@ -74,7 +101,7 @@ try {
     globalThis.process.execPath,
     [
       '-e',
-      "const core = require('@saas-maker/app-health'); const adapter = require('@saas-maker/app-health/express'); if (typeof core.createAppHealthClient !== 'function' || typeof adapter.expressMiddleware !== 'function') process.exit(1)",
+      "const core = require('@saas-maker/app-health'); const express = require('@saas-maker/app-health/express'); const hono = require('@saas-maker/app-health/hono'); const pages = require('@saas-maker/app-health/pages'); if ([core.createAppHealthClient, express.expressMiddleware, hono.honoMiddleware, pages.withPagesFunctionHealth].some((value) => typeof value !== 'function')) process.exit(1)",
     ],
     { cwd: consumerDir, stdio: 'inherit' },
   );

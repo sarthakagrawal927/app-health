@@ -16,7 +16,7 @@ apps/
 packages/
   contracts/  V1 event, aggregate, app/key, installation-status, query
               contracts with zod runtime validation and canonical fixtures
-  node/       @saas-maker/app-health client and Express adapter
+  node/       @saas-maker/app-health client plus Express, Hono, and Pages adapters
   go/         Go 1.22 client with net/http and Echo adapters
 openspec/specs/   Canonical behavior specifications
 openspec/changes/archive/   Completed and superseded change history
@@ -100,6 +100,23 @@ app.use(expressMiddleware({ client: appHealth }));
 await appHealth.close();
 ```
 
+### Hono and Cloudflare Pages Functions
+
+The public `node-v0.2.0` GitHub Release is the install fallback while the npm
+publisher identity remains unavailable:
+
+```bash
+npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.0/saas-maker-app-health-0.2.0.tgz
+```
+
+For Hono Workers, configure the core client with `runtime: 'worker'` and
+`disableTimer: true`, then mount `honoMiddleware` from
+`@saas-maker/app-health/hono`. For a Pages Function, wrap the handler with
+`withPagesFunctionHealth` from `@saas-maker/app-health/pages` and pass the
+file route as a trusted template. Both adapters use `waitUntil`, preserve the
+application response, and become a no-op when a lazy client resolver returns
+`null`.
+
 ### Echo on Go 1.22+
 
 ```bash
@@ -171,6 +188,9 @@ SDK releases are explicit rather than automatic:
 pnpm --filter @saas-maker/app-health run pack:verify
 npm whoami
 npm publish packages/node --access public
+
+# If npm authentication is unavailable, publish the verified tarball as the
+# node-v0.2.0 GitHub Release asset instead.
 
 GO_CORE_VERSION=0.1.5
 git tag "packages/go/v${GO_CORE_VERSION}"

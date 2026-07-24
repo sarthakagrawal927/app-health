@@ -5,6 +5,7 @@ import {
   goBatchFixture,
   healthState,
   nodeBatchFixture,
+  workerBatchFixture,
   validateBatch,
   EventBatchV1,
   EventV1,
@@ -29,6 +30,11 @@ describe('event batch validation', () => {
 
   it('accepts the canonical Go fixture', () => {
     const result = validateBatch(goBatchFixture());
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts the canonical Cloudflare Worker fixture', () => {
+    const result = validateBatch(workerBatchFixture());
     expect(result.ok).toBe(true);
   });
 
@@ -158,12 +164,13 @@ describe('failure transparency contracts', () => {
 });
 
 describe('canonical fixture equivalence', () => {
-  it('Node and Go fixtures are endpoint-equivalent', () => {
+  it('Node, Cloudflare Worker, and Go fixtures are endpoint-equivalent', () => {
     expect(areEndpointEquivalent(nodeBatchFixture(), goBatchFixture())).toBe(true);
+    expect(areEndpointEquivalent(nodeBatchFixture(), workerBatchFixture())).toBe(true);
   });
 
   it('buildCanonicalBatch produces a parseable batch for each runtime', () => {
-    for (const runtime of ['node', 'go'] as const) {
+    for (const runtime of ['node', 'worker', 'go'] as const) {
       const batch = buildCanonicalBatch(runtime);
       expect(EventBatchV1.safeParse(batch).success).toBe(true);
       expect(batch.runtime).toBe(runtime);

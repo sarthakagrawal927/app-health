@@ -14,6 +14,7 @@ import {
   healthState,
   type EventBatchV1,
   type EventV1,
+  type Runtime,
 } from '@app-health/contracts';
 
 const NOW = 1_725_000_000_000;
@@ -43,7 +44,7 @@ function makeEvent(overrides: Partial<EventV1> & { event_id: string }): EventV1 
   };
 }
 
-function makeBatch(events: EventV1[], runtime: 'node' | 'go' = 'node'): EventBatchV1 {
+function makeBatch(events: EventV1[], runtime: Runtime = 'node'): EventBatchV1 {
   return {
     batch_id: uuid(9000 + events.length),
     schema_version: 'v1',

@@ -308,14 +308,21 @@ function KeySetup({
   created: CreateAppResponseV1;
   onDone: () => void;
 }): JSX.Element {
-  const [runtime, setRuntime] = useState<'express' | 'echo' | 'otel'>('express');
+  const [runtime, setRuntime] = useState<'express' | 'hono' | 'pages' | 'echo' | 'otel'>('express');
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
   const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
+  const honoSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.0/saas-maker-app-health-0.2.0.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { honoMiddleware } from '@saas-maker/app-health/hono';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\napp.use('*', honoMiddleware({ client: appHealth }));`;
+  const pagesSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.0/saas-maker-app-health-0.2.0.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { withPagesFunctionHealth } from '@saas-maker/app-health/pages';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\nexport const onRequestGet = withPagesFunctionHealth(\n  { client: appHealth, route: '/users/:id' },\n  async () => Response.json({ ok: true }),\n);`;
   const echoSnippet = `go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0\n\nimport apphealthechov5 "github.com/sarthakagrawal927/app-health/packages/go/echo/v5"\n\ncleanup := apphealthechov5.Install(e, apphealthechov5.Config{\n  Enabled: true,\n  Environment: ${JSON.stringify(created.environment.name)},\n  Key: ${JSON.stringify(key)},\n  Project: ${JSON.stringify(created.app.name)},\n})\ndefer cleanup()`;
   const otelSnippet = `exporters:\n  otlphttp/app_health:\n    traces_endpoint: '${INGEST_ORIGIN}/v1/traces'\n    headers:\n      Authorization: 'Bearer ${key}'\n\nservice:\n  pipelines:\n    traces:\n      # Keep your current receivers and processors.\n      exporters: [your_existing_exporter, otlphttp/app_health]`;
-  const snippet =
-    runtime === 'express' ? expressSnippet : runtime === 'echo' ? echoSnippet : otelSnippet;
+  const snippet = {
+    express: expressSnippet,
+    hono: honoSnippet,
+    pages: pagesSnippet,
+    echo: echoSnippet,
+    otel: otelSnippet,
+  }[runtime];
 
   async function copy(value: string, label: string): Promise<void> {
     await navigator.clipboard?.writeText(value);
@@ -351,6 +358,16 @@ function KeySetup({
             onClick={() => setRuntime('express')}
           >
             Express
+          </button>
+          <button role="tab" aria-selected={runtime === 'hono'} onClick={() => setRuntime('hono')}>
+            Hono Worker
+          </button>
+          <button
+            role="tab"
+            aria-selected={runtime === 'pages'}
+            onClick={() => setRuntime('pages')}
+          >
+            Pages Functions
           </button>
           <button role="tab" aria-selected={runtime === 'echo'} onClick={() => setRuntime('echo')}>
             Go + Echo
@@ -390,9 +407,13 @@ function StatusBanner({ status }: { status: InstallationStatusV1 }): JSX.Element
       'Start your service and make one request. This page checks automatically.',
     ],
     connected: [
-      status.runtime === 'otel' ? 'OpenTelemetry connected' : 'SDK connected',
+      status.runtime === 'otel'
+        ? 'OpenTelemetry connected'
+        : status.runtime === 'worker'
+          ? 'Cloudflare Worker connected'
+          : 'SDK connected',
       status.runtime
-        ? `${status.runtime === 'node' ? 'Node.js' : status.runtime === 'go' ? 'Go' : 'Your OpenTelemetry pipeline'} is sending endpoint summaries.`
+        ? `${status.runtime === 'node' ? 'Node.js' : status.runtime === 'worker' ? 'Cloudflare Worker' : status.runtime === 'go' ? 'Go' : 'Your OpenTelemetry pipeline'} is sending endpoint summaries.`
         : 'Endpoint summaries are arriving.',
     ],
     stale: [
@@ -499,7 +520,7 @@ function EndpointCard({ endpoint }: { endpoint: EndpointAggregateV1 }): JSX.Elem
 const receivedFields = [
   ['batch_id', 'Retry deduplication', 'Short-lived', 'Eligible for cleanup after 1 hour'],
   ['schema_version', 'Contract validation', 'Not stored', 'Discarded after validation'],
-  ['runtime', 'SDK and installation state', 'Latest + aggregate', 'Node or Go only'],
+  ['runtime', 'SDK and installation state', 'Latest + aggregate', 'Node, Worker, Go, or OTel'],
   ['release', 'Release comparison', 'Aggregate / failure', 'Failure value expires after 24 hours'],
   ['event_id', 'Failure identity', 'Failures only', 'Queryable for 24 hours'],
   ['timestamp', 'Windowing and freshness', 'Aggregate / inventory / failure', 'No request content'],

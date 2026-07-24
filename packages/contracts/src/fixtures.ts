@@ -1,5 +1,5 @@
-// Canonical Node and Go contract fixtures for V1.
-// Both fixtures carry equivalent endpoint summaries (same method, route,
+// Canonical Node, Cloudflare Worker, and Go contract fixtures for V1.
+// All fixtures carry equivalent endpoint summaries (same method, route,
 // status_code, duration_ms, and release) so ingest validates them into the
 // same internal event shape. Event IDs are unique per fixture because they
 // represent distinct observed requests; equivalence is asserted on the
@@ -43,9 +43,9 @@ export const CANONICAL_ENDPOINT_SUMMARIES: readonly EndpointSummary[] = [
 
 /** Build a v1 batch from canonical summaries tagged with a runtime. */
 export function buildCanonicalBatch(
-  runtime: 'node' | 'go',
+  runtime: 'node' | 'worker' | 'go',
   release = '0.0.0-fixture',
-  seedBase = runtime === 'node' ? 1000 : 2000,
+  seedBase = runtime === 'node' ? 1000 : runtime === 'worker' ? 1500 : 2000,
 ): EventBatchV1 {
   return {
     batch_id: uuid(seedBase - 1),
@@ -66,6 +66,9 @@ export function buildCanonicalBatch(
 
 /** Canonical Node fixture. */
 export const nodeBatchFixture = (): EventBatchV1 => buildCanonicalBatch('node');
+
+/** Canonical Cloudflare Worker fixture. */
+export const workerBatchFixture = (): EventBatchV1 => buildCanonicalBatch('worker');
 
 /** Canonical Go fixture. */
 export const goBatchFixture = (): EventBatchV1 => buildCanonicalBatch('go');

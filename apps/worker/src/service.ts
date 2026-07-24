@@ -22,6 +22,7 @@ import {
   type FailureQueryResponseV1 as FailureQueryResponse,
   type KeyRecordV1,
   type ListAppsResponseV1,
+  type Runtime,
   type Window,
 } from '@app-health/contracts';
 import { SEED_APP_ID, SEED_ENV_ID } from '@app-health/contracts';
@@ -149,7 +150,7 @@ export class AppHealthService {
   /** Process projected OTLP endpoint events through the shared aggregate path. */
   async ingestEvents(
     keyRecord: KeyRecordV1,
-    runtime: 'node' | 'go' | 'otel',
+    runtime: Runtime,
     release: string | undefined,
     events: readonly EndpointEvent[],
     now: number,
@@ -192,7 +193,7 @@ export class AppHealthService {
 
   private async persistEvents(
     keyRecord: KeyRecordV1,
-    runtime: 'node' | 'go' | 'otel',
+    runtime: Runtime,
     release: string | undefined,
     acceptedEvents: readonly EndpointEvent[],
     duplicates: number,

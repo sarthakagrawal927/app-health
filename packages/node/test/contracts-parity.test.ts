@@ -13,6 +13,7 @@ describe('published SDK contract parity', () => {
       MAX_DURATION_MS: sdk.MAX_DURATION_MS,
       MIN_STATUS_CODE: sdk.MIN_STATUS_CODE,
       MAX_STATUS_CODE: sdk.MAX_STATUS_CODE,
+      runtimes: ['node', 'worker', 'go', 'otel'] satisfies sdk.RuntimeField[],
     }).toEqual({
       SCHEMA_VERSION: canonical.SCHEMA_VERSION,
       MAX_BATCH_EVENTS: canonical.MAX_BATCH_EVENTS,
@@ -22,6 +23,7 @@ describe('published SDK contract parity', () => {
       MAX_DURATION_MS: canonical.MAX_DURATION_MS,
       MIN_STATUS_CODE: canonical.MIN_STATUS_CODE,
       MAX_STATUS_CODE: canonical.MAX_STATUS_CODE,
+      runtimes: [...canonical.RUNTIMES],
     });
   });
 });

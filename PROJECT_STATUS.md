@@ -1,6 +1,6 @@
 # app-health — PROJECT STATUS
 
-Last updated: 2026-07-22
+Last updated: 2026-07-25
 
 ## Why / What
 
@@ -44,6 +44,10 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 - 2026-07-21 — hardened SDK string privacy so official adapters never send unmatched concrete paths and unsafe release strings are omitted; added Go 1.22 ServeMux pattern resolution, optimized UUID generation, and measured approximately 1.7 microseconds serial / 0.04 microseconds 8-way parallel incremental Echo overhead
 - 2026-07-22 — added authenticated OTLP/HTTP protobuf and JSON ingestion for existing OpenTelemetry pipelines, strict server-span projection, retry-stable deduplication, sampling provenance, Collector onboarding, and sampled-estimate disclosure
 - 2026-07-22 — merged release PR #11 after matching TypeScript and Go CI, deployed Worker version `5b2cbee1-74e9-4eb8-a818-c7a2aa2edd37`, verified both custom domains and OTLP host/auth boundaries, and published Go core `v0.1.5`
+- 2026-07-25 — added privacy-safe Hono and Cloudflare Pages Functions adapters,
+  Worker runtime reporting, `waitUntil` delivery, Worker onboarding, and a
+  verified `0.2.0` JavaScript package ready for immutable GitHub Release
+  distribution while npm publisher authentication remains unavailable
 
 ## Products
 
@@ -55,6 +59,10 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 - **Development foundation:** pnpm TypeScript workspace plus Go 1.22 module, versioned runtime-validated endpoint contracts, equivalent Node/Go fixtures, local seeded Worker adapter, and green TypeScript/Go CI.
 - **Cloudflare production implementation:** D1 owns apps/environments/hashed keys/install state/bounded dedupe and only normalized endpoint identity plus first/last seen; Workers Analytics Engine owns sampled performance telemetry; a timing-safe owner Worker secret protects owner APIs; the dashboard retains that secret only in page memory; `workers.dev` is disabled; `health.sassmaker.com` and `ingest.sassmaker.com` are live boundaries.
 - **Node SDK:** publishable `@saas-maker/app-health` core plus `/express` adapter and bounded fail-open delivery with privacy, outage, retry, overflow, shutdown, package-consumer, and benchmark coverage.
+- **Cloudflare JavaScript adapters:** optional `/hono` middleware and `/pages`
+  wrapper preserve application responses, accept lazy no-op configuration,
+  record only trusted framework route templates, and keep bounded delivery
+  alive with `ExecutionContext.waitUntil`.
 - **Go SDK:** real private GitHub module with `net/http` and `/echo` middleware, a bounded adapter record API, route-pattern/resolver support, response/error/panic preservation, privacy/outage/retry/overflow/close tests, and benchmark coverage.
 - **Operator dashboard:** local app/key setup, one-time key handoff, verified Express/Echo snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
 - **End-to-end local proof:** the Express and Go examples each sent `/health`, `/users/:id`, and `/orders` through the same local ingest and query APIs used by the dashboard; both runtimes reached connected state and the aggregates updated.
@@ -65,7 +73,11 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 ## Todo / Planned / Deferred / Blocked
 
 1. **Deferred:** the broader owner-first Problem workflow remains outside V0 until endpoint health earns expansion; its superseded planning change is archived rather than presented as active work.
-2. **Blocked:** npm publication of `@saas-maker/app-health@0.1.0` remains externally gated because the configured registry identity returns `E401 Unauthorized`; the packed ESM/CommonJS artifact is verified, but no npm release is claimed.
+2. **Distribution:** npm publication remains externally gated because the
+   configured registry identity returns `E401 Unauthorized`. Version `0.2.0`
+   is verified across ESM/CommonJS and all adapter subpaths and uses an
+   immutable public GitHub Release asset as the supported fallback; no npm
+   release is claimed.
 3. **Verification:** the injected-failure D1, owner identity, host-boundary,
    ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
    and browser non-persistence matrices are covered locally. The live dashboard

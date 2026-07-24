@@ -81,6 +81,32 @@ describe('privacy: serialized batches exclude all request content', () => {
     }
   });
 
+  it('labels Cloudflare JavaScript batches as worker', async () => {
+    const bodies: unknown[] = [];
+    const client = createAppHealthClient({
+      key: 'ahk_test',
+      endpoint: 'https://ingest.example/v1/ingest',
+      runtime: 'worker',
+      disableTimer: true,
+      maxRetries: 0,
+      fetch: async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 202 });
+      },
+    });
+
+    client.record({
+      method: 'GET',
+      route: '/health',
+      status_code: 200,
+      duration_ms: 1,
+    });
+    await client.flush();
+
+    expect(bodies).toHaveLength(1);
+    expect((bodies[0] as { runtime: string }).runtime).toBe('worker');
+  });
+
   it('never references req.headers, req.query, req.params, or req.body in source', async () => {
     // Source-level privacy guard: the middleware module must not read
     // sensitive request properties. This protects against future regressions.
