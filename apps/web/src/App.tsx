@@ -554,30 +554,98 @@ function formatTimestamp(timestamp: number): string {
 }
 
 function FailureRow({ failure }: { failure: FailureEventV1 }): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const detailId = `failure-detail-${failure.failure_id}`;
+  const endpointLabel = `${failure.method} ${failure.route} ${failure.status_code}`;
+
   return (
-    <tr>
-      <td data-label="Method">
-        <span className={methodClass(failure.method)}>{failure.method}</span>
-      </td>
-      <td data-label="Normalized route">
-        <code className="route">{failure.route}</code>
-      </td>
-      <td data-label="Status">
-        <span className={`status-code status-code-${Math.floor(failure.status_code / 100)}xx`}>
-          {failure.status_code}
-        </span>
-      </td>
-      <td data-label="Duration">{failure.duration_ms.toLocaleString()} ms</td>
-      <td data-label="Occurred" title={formatTimestamp(failure.occurred_at)}>
-        {formatAge(failure.occurred_at)}
-      </td>
-      <td data-label="Release">{failure.release ?? '—'}</td>
-      <td data-label="Failure ID">
-        <code className="failure-id" title={failure.failure_id}>
-          {failure.failure_id}
-        </code>
-      </td>
-    </tr>
+    <>
+      <tr className={expanded ? 'failure-summary-row is-expanded' : 'failure-summary-row'}>
+        <td data-label="Method">
+          <span className={methodClass(failure.method)}>{failure.method}</span>
+        </td>
+        <td data-label="Normalized route">
+          <code className="route">{failure.route}</code>
+        </td>
+        <td data-label="Status">
+          <span className={`status-code status-code-${Math.floor(failure.status_code / 100)}xx`}>
+            {failure.status_code}
+          </span>
+        </td>
+        <td data-label="Duration">{failure.duration_ms.toLocaleString()} ms</td>
+        <td data-label="Occurred" title={formatTimestamp(failure.occurred_at)}>
+          {formatAge(failure.occurred_at)}
+        </td>
+        <td data-label="Release">{failure.release ?? '—'}</td>
+        <td data-label="Failure ID" className="failure-id-cell">
+          <code className="failure-id" title={failure.failure_id}>
+            {failure.failure_id}
+          </code>
+          <button
+            type="button"
+            className="failure-detail-toggle"
+            aria-expanded={expanded}
+            aria-controls={detailId}
+            aria-label={`${expanded ? 'Hide' : 'View'} details for ${endpointLabel}`}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? 'Hide details' : 'View details'}
+          </button>
+        </td>
+      </tr>
+      {expanded ? (
+        <tr className="failure-detail-row">
+          <td colSpan={7}>
+            <div id={detailId} className="failure-detail-panel">
+              <div className="failure-detail-heading">
+                <strong>Retained failure detail</strong>
+                <span>Exact fields kept for this failed request</span>
+              </div>
+              <dl className="failure-detail-grid">
+                <div>
+                  <dt>Endpoint</dt>
+                  <dd>
+                    <code>
+                      {failure.method} {failure.route}
+                    </code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{failure.status_code}</dd>
+                </div>
+                <div>
+                  <dt>Duration</dt>
+                  <dd>{failure.duration_ms.toLocaleString()} ms</dd>
+                </div>
+                <div>
+                  <dt>Occurred</dt>
+                  <dd>
+                    <time dateTime={new Date(failure.occurred_at).toISOString()}>
+                      {formatTimestamp(failure.occurred_at)}
+                    </time>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Release</dt>
+                  <dd>{failure.release ?? 'Not reported'}</dd>
+                </div>
+                <div>
+                  <dt>Failure ID</dt>
+                  <dd>
+                    <code>{failure.failure_id}</code>
+                  </dd>
+                </div>
+              </dl>
+              <p className="failure-detail-boundary">
+                No request body, headers, query values, route values, identity, logs, or stack
+                traces were collected.
+              </p>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
 

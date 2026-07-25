@@ -273,6 +273,20 @@ describe('App Health V0 UI', () => {
     expect(await screen.findByText('/orders/:id')).toBeTruthy();
     expect(screen.getByText('503')).toBeTruthy();
     expect(screen.getByText('812 ms')).toBeTruthy();
+    const detailsButton = screen.getByRole('button', {
+      name: 'View details for POST /orders/:id 503',
+    });
+    expect(detailsButton.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(detailsButton);
+    expect(screen.getByText('Retained failure detail')).toBeTruthy();
+    expect(screen.getByText('Exact fields kept for this failed request')).toBeTruthy();
+    expect(screen.getByText(/No request body, headers, query values/i)).toBeTruthy();
+    const hideDetailsButton = screen.getByRole('button', {
+      name: 'Hide details for POST /orders/:id 503',
+    });
+    expect(hideDetailsButton.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(hideDetailsButton);
+    expect(screen.queryByText('Retained failure detail')).toBeNull();
     expect(screen.getByText('The complete accepted shape')).toBeTruthy();
     expect(screen.getByText('Request bodies')).toBeTruthy();
     expect(
