@@ -1,5 +1,8 @@
-## ADDED Requirements
+# worker-framework-sdk Specification
 
+## Purpose
+TBD - created by archiving change support-worker-frameworks-and-release-sdk. Update Purpose after archive.
+## Requirements
 ### Requirement: Hono middleware records matched routes
 The JavaScript SDK SHALL provide optional Hono middleware that records method,
 Hono's matched route template, final status code, duration, timestamp, and

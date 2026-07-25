@@ -3,15 +3,16 @@
 ## Purpose
 
 Define authenticated, aggregate-only endpoint telemetry ingestion and bounded performance queries.
-
 ## Requirements
-
 ### Requirement: Versioned authenticated batches
-Ingest SHALL verify the environment-scoped key against its D1 SHA-256 verifier, validate the schema version and bounded event fields, enforce a bounded request body before JSON parsing, reject unknown unsafe content, and accept valid Node and Go batches under the same contract.
+Ingest SHALL verify the environment-scoped key against its D1 SHA-256 verifier,
+validate the schema version and bounded event fields, enforce a bounded request
+body before JSON parsing, reject unknown unsafe content, and accept valid Node,
+Cloudflare Worker, and Go batches under the same contract.
 
 #### Scenario: Valid mixed-runtime contract fixtures
-- **WHEN** canonical Node and Go fixtures carry equivalent endpoint summaries
-- **THEN** ingest validates both into the same internal event shape
+- **WHEN** canonical Node, Cloudflare Worker, and Go fixtures carry equivalent endpoint summaries
+- **THEN** ingest validates all three into the same internal event shape
 
 ### Requirement: Idempotent batch processing
 Ingest SHALL deduplicate a retry-stable batch identifier in D1 for a bounded window so retrying a batch does not increase Analytics Engine metrics twice. D1 SHALL store at most one dedupe row per accepted batch, not per event.

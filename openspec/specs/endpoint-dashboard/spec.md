@@ -3,9 +3,7 @@
 ## Purpose
 
 Define the local operator experience for setup, installation state, and observed endpoint performance.
-
 ## Requirements
-
 ### Requirement: Observed endpoint inventory
 The private dashboard SHALL list every method and normalized route accepted for the selected durable app and environment by merging the durable normalized inventory with Analytics Engine metrics. It SHALL describe the list as observed traffic rather than source-code route inventory.
 
@@ -46,14 +44,17 @@ The dashboard SHALL distinguish no traffic yet, stale traffic, invalid or revoke
 - **THEN** the page shows the install snippet and a waiting-for-traffic state rather than an empty healthy table
 
 ### Requirement: Production SDK snippets use the ingest origin
-The setup view SHALL render copy-ready Express and Echo installation snippets with their public package paths, the configured production ingest origin, and the one-time key without persisting the raw key in browser storage or analytics.
+The setup view SHALL render copy-ready Express, Hono Worker, Pages Function, and
+Echo installation snippets with their public package paths, the configured
+production ingest origin, and the one-time key without persisting the raw key
+in browser storage or analytics.
 
 #### Scenario: Operator creates a production app
 - **WHEN** the creation response returns the one-time key
-- **THEN** the visible Express and Echo snippets target the configured ingest origin and the key disappears after the one-time setup state is left
+- **THEN** every visible framework snippet targets the configured ingest origin and the key disappears after the one-time setup state is left
 
 #### Scenario: Operator switches framework snippet
-- **WHEN** the operator selects Express or Echo
+- **WHEN** the operator selects Express, Hono, Pages Functions, or Echo
 - **THEN** the dashboard shows only the verified install and middleware code for that framework
 
 ### Requirement: Polished responsive presentation
@@ -83,3 +84,11 @@ Endpoint rows and cards SHALL visibly label trace-derived request counts, error 
 #### Scenario: Endpoint includes OTel trace contributions
 - **WHEN** the endpoint API returns `upstream_sampled: true`
 - **THEN** desktop and mobile endpoint presentations disclose that the metrics and health assessment are based on sampled traces
+
+### Requirement: Worker runtime connection state
+The installation state SHALL distinguish Cloudflare Worker telemetry from Node,
+Go, and OpenTelemetry traffic without changing endpoint health calculations.
+
+#### Scenario: Worker batch is accepted
+- **WHEN** the latest accepted environment batch has runtime `worker`
+- **THEN** setup reports `Cloudflare Worker connected`

@@ -8,7 +8,10 @@ App Health V0 gives a service an ingest key and shows how every observed endpoin
 
 **Users:** A developer or operator who wants immediate endpoint health after installing one small SDK or connecting an existing OpenTelemetry pipeline.
 
-**IN scope:** App/environment creation, one ingest key, Express, Echo, Go `net/http`, and OTLP/HTTP trace projection, asynchronous endpoint summaries, aggregate-only storage, and a 15-minute/1-hour/24-hour observed-endpoint performance table.
+**IN scope:** App/environment creation, one ingest key, Express, Hono Workers,
+Cloudflare Pages Functions, Echo, Go `net/http`, and OTLP/HTTP trace projection,
+asynchronous endpoint summaries, aggregate-only storage, and a
+15-minute/1-hour/24-hour observed-endpoint performance table.
 
 **OUT of scope:** Unobserved source-route discovery, Problems/incidents, raw logs, stored trace exploration, request or response content, user identity, AI, alerts, deployment recovery, GitHub installation, teams/roles, and billing.
 
