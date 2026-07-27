@@ -7,10 +7,10 @@ import {
   BUCKET_MS,
   CreateAppRequestV1,
   FAILURE_RETENTION_HOURS,
+  WINDOW_MS,
   FailureQueryResponseV1,
   InstallationStatusV1,
   MAX_CLOCK_SKEW_MS,
-  WINDOW_MS,
   buildSeedBuckets,
   mergeBuckets,
   validateBatch,
@@ -359,18 +359,15 @@ export class AppHealthService {
   async queryFailures(
     appId: string,
     envId: string,
+    window: Window,
     limit: number,
     now: number,
   ): Promise<FailureQueryResponse> {
     const failures =
-      (await this.repos.failures?.listFailures(
-        appId,
-        envId,
-        now - FAILURE_RETENTION_HOURS * 60 * 60 * 1000,
-        limit,
-      )) ?? [];
+      (await this.repos.failures?.listFailures(appId, envId, now - WINDOW_MS[window], limit)) ?? [];
     return FailureQueryResponseV1.parse({
       refreshed_at: now,
+      window,
       retention_hours: FAILURE_RETENTION_HOURS,
       limit,
       failures,

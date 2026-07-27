@@ -145,16 +145,31 @@ describe('failure transparency contracts', () => {
   });
 
   it('bounds failure queries and validates the retention policy', () => {
-    expect(FailureQueryRequestV1.parse({ app_id: 'app-1', environment_id: 'env-1' }).limit).toBe(
-      50,
+    expect(FailureQueryRequestV1.parse({ app_id: 'app-1', environment_id: 'env-1' })).toMatchObject(
+      { window: '24h', limit: 50 },
     );
+    expect(
+      FailureQueryRequestV1.parse({
+        app_id: 'app-1',
+        environment_id: 'env-1',
+        window: '15m',
+      }).window,
+    ).toBe('15m');
     expect(
       FailureQueryRequestV1.safeParse({ app_id: 'app-1', environment_id: 'env-1', limit: 101 })
         .success,
     ).toBe(false);
     expect(
+      FailureQueryRequestV1.safeParse({
+        app_id: 'app-1',
+        environment_id: 'env-1',
+        window: '99m',
+      }).success,
+    ).toBe(false);
+    expect(
       FailureQueryResponseV1.safeParse({
         refreshed_at: 1,
+        window: '1h',
         retention_hours: 24,
         limit: 50,
         failures: [],

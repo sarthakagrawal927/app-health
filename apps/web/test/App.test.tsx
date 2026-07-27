@@ -107,6 +107,7 @@ function installFetch(options?: {
       if (options?.failureFail) return new Response(null, { status: 503 });
       return Response.json({
         refreshed_at: Date.now(),
+        window: url.searchParams.get('window') ?? '24h',
         retention_hours: 24,
         limit: Number(url.searchParams.get('limit') ?? 50),
         failures: options?.failureRows ?? [],
@@ -281,11 +282,50 @@ describe('App Health V0 UI', () => {
         .find(
           (url) =>
             url?.pathname === '/v1/failures' &&
-            url.searchParams.get('environment_id') === 'env-polaris-staging',
+            url.searchParams.get('environment_id') === 'env-polaris-staging' &&
+            url.searchParams.get('window') === '15m',
         );
       expect(failureCall).toBeDefined();
     });
     expect(localStorage.getItem(STORAGE_KEY)).toContain('env-polaris-staging');
+  });
+
+  it('shares the selected period across Endpoints and Data received', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    const fetchMock = installFetch({ failureRows: [] });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '1h' }));
+    await waitFor(() => {
+      const endpointCall = fetchMock.mock.calls
+        .map(([input]) => (input instanceof URL ? input : null))
+        .find(
+          (url) => url?.pathname === '/v1/endpoints' && url.searchParams.get('window') === '1h',
+        );
+      expect(endpointCall).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Data received' }));
+    expect(screen.getByRole('button', { name: '1h' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      const failureCall = fetchMock.mock.calls
+        .map(([input]) => (input instanceof URL ? input : null))
+        .find((url) => url?.pathname === '/v1/failures' && url.searchParams.get('window') === '1h');
+      expect(failureCall).toBeDefined();
+    });
+    expect(await screen.findByText('No retained failures in the last 1 hour')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '24h' }));
+    await waitFor(() => {
+      const failureCall = fetchMock.mock.calls
+        .map(([input]) => (input instanceof URL ? input : null))
+        .find(
+          (url) => url?.pathname === '/v1/failures' && url.searchParams.get('window') === '24h',
+        );
+      expect(failureCall).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Endpoints' }));
+    expect(screen.getByRole('button', { name: '24h' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('replaces a cached project that the authenticated key cannot access', async () => {

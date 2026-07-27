@@ -329,6 +329,7 @@ const worker = {
       const parsed = FailureQueryRequestV1.safeParse({
         app_id: url.searchParams.get('app_id'),
         environment_id: url.searchParams.get('environment_id'),
+        window: url.searchParams.get('window') ?? undefined,
         limit: Number(url.searchParams.get('limit') ?? DEFAULT_FAILURE_QUERY_LIMIT),
       });
       if (!parsed.success) return json(400, { error: 'invalid failure query' }, true);
@@ -338,6 +339,7 @@ const worker = {
         await service.queryFailures(
           parsed.data.app_id,
           parsed.data.environment_id,
+          parsed.data.window,
           parsed.data.limit,
           Date.now(),
         ),
