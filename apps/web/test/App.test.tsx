@@ -131,9 +131,10 @@ describe('App Health V0 UI', () => {
 
   it('unlocks with an owner key without persisting it in browser storage', async () => {
     const onUnlock = vi.fn();
+    const listed = { apps: [] };
     const fetchMock = vi.fn(async (_input: URL | RequestInfo, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('authorization')).toBe('Bearer aho_owner-secret');
-      return Response.json({ apps: [] });
+      return Response.json(listed);
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<OwnerUnlock onUnlock={onUnlock} />);
@@ -141,7 +142,7 @@ describe('App Health V0 UI', () => {
     expect(input).toHaveAttribute('type', 'password');
     fireEvent.change(input, { target: { value: 'aho_owner-secret' } });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('aho_owner-secret'));
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('aho_owner-secret', listed));
     expect([...storageValues.values()].join('')).not.toContain('aho_owner-secret');
   });
 

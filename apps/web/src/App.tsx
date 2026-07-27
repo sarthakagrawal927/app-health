@@ -75,6 +75,32 @@ function readProject(): SavedProject | null {
   }
 }
 
+function availableProjects(listed: ListAppsResponseV1): SavedProject[] {
+  return listed.apps.flatMap((entry) =>
+    entry.environments.map((environment) => ({
+      appId: entry.app.id,
+      environmentId: environment.id,
+      name: entry.app.name,
+      environment: environment.name,
+    })),
+  );
+}
+
+function authorizedProject(
+  current: SavedProject | null,
+  available: SavedProject[],
+): SavedProject | null {
+  if (!current) return available[0] ?? null;
+  return (
+    available.find(
+      (candidate) =>
+        candidate.appId === current.appId && candidate.environmentId === current.environmentId,
+    ) ??
+    available[0] ??
+    null
+  );
+}
+
 export function sortEndpoints(
   endpoints: EndpointAggregateV1[],
   key: SortKey,
@@ -126,7 +152,11 @@ function methodClass(method: string): string {
   return `method method-${method.toLowerCase()}`;
 }
 
-export function OwnerUnlock({ onUnlock }: { onUnlock: (token: string) => void }): JSX.Element {
+export function OwnerUnlock({
+  onUnlock,
+}: {
+  onUnlock: (token: string, listed: ListAppsResponseV1) => void;
+}): JSX.Element {
   const [token, setToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -139,7 +169,7 @@ export function OwnerUnlock({ onUnlock }: { onUnlock: (token: string) => void })
       const response = await ownerFetch('/v1/apps', token.trim());
       if (response.status === 403) throw new Error('That owner key was not accepted');
       if (!response.ok) throw new Error(`App Health returned ${response.status}`);
-      onUnlock(token.trim());
+      onUnlock(token.trim(), (await response.json()) as ListAppsResponseV1);
       setToken('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not unlock App Health');
@@ -1194,24 +1224,15 @@ export function App(): JSX.Element {
         const response = await ownerFetch('/v1/apps', token);
         if (!response.ok) return;
         const listed = (await response.json()) as ListAppsResponseV1;
-        const available = listed.apps.flatMap((entry) =>
-          entry.environments.map((environment) => ({
-            appId: entry.app.id,
-            environmentId: environment.id,
-            name: entry.app.name,
-            environment: environment.name,
-          })),
-        );
+        const available = availableProjects(listed);
         if (cancelled) return;
         setProjects(available);
-        const selected = project
-          ? available.find(
-              (candidate) =>
-                candidate.appId === project.appId &&
-                candidate.environmentId === project.environmentId,
-            )
-          : undefined;
-        if (!selected && available[0]) selectProject(available[0]);
+        const selected = authorizedProject(project, available);
+        if (
+          selected &&
+          (selected.appId !== project?.appId || selected.environmentId !== project.environmentId)
+        )
+          selectProject(selected);
       } catch {
         // App-list refresh is best effort; dashboard queries report their own failures.
       }
@@ -1245,6 +1266,15 @@ export function App(): JSX.Element {
     setCreated(value);
   }
 
+  function handleUnlock(token: string, listed: ListAppsResponseV1): void {
+    const available = availableProjects(listed);
+    const selected = authorizedProject(project, available);
+    setProjects(available);
+    if (selected) selectProject(selected);
+    else reset();
+    setOwnerToken(token);
+  }
+
   function reset(): void {
     localStorage.removeItem(STORAGE_KEY);
     setCreated(null);
@@ -1256,7 +1286,7 @@ export function App(): JSX.Element {
     setCreated(null);
   }
 
-  if (ownerToken === null) return <OwnerUnlock onUnlock={setOwnerToken} />;
+  if (ownerToken === null) return <OwnerUnlock onUnlock={handleUnlock} />;
   if (created) return <KeySetup created={created} onDone={() => setCreated(null)} />;
   if (!project) return <Setup ownerToken={ownerToken} onCreated={handleCreated} />;
   return (
