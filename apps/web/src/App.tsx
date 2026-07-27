@@ -1204,7 +1204,14 @@ export function App(): JSX.Element {
         );
         if (cancelled) return;
         setProjects(available);
-        if (!project && available[0]) selectProject(available[0]);
+        const selected = project
+          ? available.find(
+              (candidate) =>
+                candidate.appId === project.appId &&
+                candidate.environmentId === project.environmentId,
+            )
+          : undefined;
+        if (!selected && available[0]) selectProject(available[0]);
       } catch {
         // App-list refresh is best effort; dashboard queries report their own failures.
       }
@@ -1215,7 +1222,7 @@ export function App(): JSX.Element {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [ownerToken, project?.appId]);
+  }, [ownerToken, project?.appId, project?.environmentId]);
 
   function selectProject(value: SavedProject): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(value));

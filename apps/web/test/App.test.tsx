@@ -287,6 +287,39 @@ describe('App Health V0 UI', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toContain('env-polaris-staging');
   });
 
+  it('replaces a cached project that the authenticated key cannot access', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        appId: 'app-demo',
+        environmentId: 'env-demo',
+        name: 'App Health Demo',
+        environment: 'demo',
+      }),
+    );
+    installFetch({
+      apps: [
+        {
+          app: { id: 'app-polaris', name: 'Polaris', created_at: Date.now() },
+          environments: [
+            {
+              id: 'env-polaris-local',
+              app_id: 'app-polaris',
+              name: 'local',
+              created_at: Date.now(),
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('Polaris')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Environment' })).toHaveValue('env-polaris-local');
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('app-polaris');
+  });
+
   it('identifies Cloudflare Worker traffic', async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
     installFetch({
