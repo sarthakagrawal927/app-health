@@ -131,9 +131,10 @@ describe('App Health V0 UI', () => {
 
   it('unlocks with an owner key without persisting it in browser storage', async () => {
     const onUnlock = vi.fn();
+    const listed = { apps: [] };
     const fetchMock = vi.fn(async (_input: URL | RequestInfo, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('authorization')).toBe('Bearer aho_owner-secret');
-      return Response.json({ apps: [] });
+      return Response.json(listed);
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<OwnerUnlock onUnlock={onUnlock} />);
@@ -141,7 +142,7 @@ describe('App Health V0 UI', () => {
     expect(input).toHaveAttribute('type', 'password');
     fireEvent.change(input, { target: { value: 'aho_owner-secret' } });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('aho_owner-secret'));
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('aho_owner-secret', listed));
     expect([...storageValues.values()].join('')).not.toContain('aho_owner-secret');
   });
 
@@ -285,6 +286,39 @@ describe('App Health V0 UI', () => {
       expect(failureCall).toBeDefined();
     });
     expect(localStorage.getItem(STORAGE_KEY)).toContain('env-polaris-staging');
+  });
+
+  it('replaces a cached project that the authenticated key cannot access', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        appId: 'app-demo',
+        environmentId: 'env-demo',
+        name: 'App Health Demo',
+        environment: 'demo',
+      }),
+    );
+    installFetch({
+      apps: [
+        {
+          app: { id: 'app-polaris', name: 'Polaris', created_at: Date.now() },
+          environments: [
+            {
+              id: 'env-polaris-local',
+              app_id: 'app-polaris',
+              name: 'local',
+              created_at: Date.now(),
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('Polaris')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Environment' })).toHaveValue('env-polaris-local');
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('app-polaris');
   });
 
   it('identifies Cloudflare Worker traffic', async () => {
