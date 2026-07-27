@@ -670,11 +670,12 @@ describe('worker local mode', () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
+      window: string;
       retention_hours: number;
       limit: number;
       failures: unknown[];
     };
-    expect(body).toMatchObject({ retention_hours: 24, limit: 25 });
+    expect(body).toMatchObject({ window: '24h', retention_hours: 24, limit: 25 });
     expect(Array.isArray(body.failures)).toBe(true);
     expect(res.headers.get('cache-control')).toBe('no-store');
   });
@@ -695,6 +696,23 @@ describe('worker local mode', () => {
       LOCAL_ENV,
     );
     expect(res.status).toBe(400);
+  });
+
+  it('accepts a supported retained-failure window and rejects an unsupported one', async () => {
+    const supported = await call(
+      'GET',
+      `/v1/failures?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&window=1h`,
+      LOCAL_ENV,
+    );
+    expect(supported.status).toBe(200);
+    expect(await supported.json()).toMatchObject({ window: '1h' });
+
+    const unsupported = await call(
+      'GET',
+      `/v1/failures?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&window=99m`,
+      LOCAL_ENV,
+    );
+    expect(unsupported.status).toBe(400);
   });
 
   it('returns 404 for unknown paths', async () => {

@@ -29,6 +29,12 @@ type SortKey = 'health' | 'requests' | 'error_rate' | 'p95' | 'last_seen';
 type SortDirection = 'asc' | 'desc';
 type DashboardView = 'endpoints' | 'data';
 
+const WINDOW_LABELS: Record<Window, string> = {
+  '15m': '15 minutes',
+  '1h': '1 hour',
+  '24h': '24 hours',
+};
+
 interface SavedProject {
   appId: string;
   environmentId: string;
@@ -682,9 +688,11 @@ function FailureRow({ failure }: { failure: FailureEventV1 }): JSX.Element {
 function DataReceived({
   project,
   ownerToken,
+  windowKey,
 }: {
   project: SavedProject;
   ownerToken: string;
+  windowKey: Window;
 }): JSX.Element {
   const [data, setData] = useState<FailureQueryResponseV1 | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -699,6 +707,7 @@ function DataReceived({
         const url = apiUrl('/v1/failures');
         url.searchParams.set('app_id', project.appId);
         url.searchParams.set('environment_id', project.environmentId);
+        url.searchParams.set('window', windowKey);
         url.searchParams.set('limit', '50');
         const response = await ownerFetch(url, ownerToken);
         if (!response.ok) throw new Error(`API returned ${response.status}`);
@@ -719,7 +728,7 @@ function DataReceived({
     return () => {
       cancelled = true;
     };
-  }, [ownerToken, project, refresh]);
+  }, [ownerToken, project, refresh, windowKey]);
 
   return (
     <div className="transparency-view">
@@ -744,7 +753,7 @@ function DataReceived({
             <strong>0</strong> payload fields
           </span>
           <span>
-            <strong>24h</strong> failure window
+            <strong>24h</strong> max retention
           </span>
         </div>
       </section>
@@ -785,10 +794,10 @@ function DataReceived({
         ) : null}
         {!loading && !error && data?.failures.length === 0 ? (
           <div className="failure-empty">
-            <strong>No retained failures in the last 24 hours</strong>
+            <strong>No retained failures in the last {WINDOW_LABELS[windowKey]}</strong>
             <p>
-              This means there are no individual 4xx or 5xx rows to show. Check Endpoints for the
-              complete aggregate traffic picture.
+              There are no individual 4xx or 5xx rows in this period. Choose a longer period or
+              check Endpoints for the complete aggregate traffic picture.
             </p>
           </div>
         ) : null}
@@ -1032,19 +1041,17 @@ function Dashboard({
               </>
             )}
           </div>
-          {view === 'endpoints' ? (
-            <div className="window-control" aria-label="Time window">
-              {WINDOWS.map((value) => (
-                <button
-                  key={value}
-                  aria-pressed={windowKey === value}
-                  onClick={() => setWindowKey(value)}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <div className="window-control" aria-label="Time window">
+            {WINDOWS.map((value) => (
+              <button
+                key={value}
+                aria-pressed={windowKey === value}
+                onClick={() => setWindowKey(value)}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
         </div>
         {view === 'endpoints' ? (
           <>
@@ -1188,7 +1195,7 @@ function Dashboard({
             </footer>
           </>
         ) : (
-          <DataReceived project={project} ownerToken={ownerToken} />
+          <DataReceived project={project} ownerToken={ownerToken} windowKey={windowKey} />
         )}
       </main>
     </div>

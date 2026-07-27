@@ -398,8 +398,8 @@ describe('ingest aggregate-only storage', () => {
     ];
     await service.ingest(SEED_KEY, makeBatch(events), NOW);
 
-    const response = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, 50, NOW);
-    expect(response).toMatchObject({ retention_hours: 24, limit: 50 });
+    const response = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, '24h', 50, NOW);
+    expect(response).toMatchObject({ window: '24h', retention_hours: 24, limit: 50 });
     expect(response.failures.map((failure) => failure.status_code)).toEqual([503, 404]);
     expect(response.failures[0]).toEqual({
       failure_id: uuid(34),
@@ -426,10 +426,27 @@ describe('ingest aggregate-only storage', () => {
       NOW,
     );
 
-    const seed = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, 50, NOW);
+    const seed = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, '24h', 50, NOW);
     expect(seed.failures.some((failure) => failure.route === '/private')).toBe(false);
-    const scoped = await service.queryFailures(other.app.id, other.environment.id, 50, NOW);
+    const scoped = await service.queryFailures(other.app.id, other.environment.id, '24h', 50, NOW);
     expect(scoped.failures.map((failure) => failure.route)).toEqual(['/private']);
+  });
+
+  it('filters retained failures to the selected supported window', async () => {
+    const { service, adapter } = await freshService();
+    await adapter.recordFailures(SEED_APP_ID, SEED_ENV_ID, [
+      makeEvent({ event_id: uuid(36), timestamp: NOW - 2 * 60 * 60 * 1000, status_code: 401 }),
+      makeEvent({ event_id: uuid(37), timestamp: NOW - 30 * 60 * 1000, status_code: 404 }),
+      makeEvent({ event_id: uuid(38), timestamp: NOW - 5 * 60 * 1000, status_code: 503 }),
+    ]);
+
+    const recent = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, '15m', 50, NOW);
+    const hourly = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, '1h', 50, NOW);
+    const daily = await service.queryFailures(SEED_APP_ID, SEED_ENV_ID, '24h', 50, NOW);
+
+    expect(recent.failures.map((failure) => failure.status_code)).toEqual([503]);
+    expect(hourly.failures.map((failure) => failure.status_code)).toEqual([503, 404]);
+    expect(daily.failures.map((failure) => failure.status_code)).toEqual([503, 404, 401]);
   });
 });
 

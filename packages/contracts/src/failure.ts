@@ -4,6 +4,7 @@ import {
   MAX_METHOD_LENGTH,
   MAX_RELEASE_LENGTH,
   MAX_ROUTE_LENGTH,
+  WINDOWS,
 } from './constants.js';
 
 export const FAILURE_RETENTION_HOURS = 24;
@@ -14,6 +15,7 @@ export const FailureQueryRequestV1 = z
   .object({
     app_id: z.string().min(1),
     environment_id: z.string().min(1),
+    window: z.enum(WINDOWS).default('24h'),
     limit: z
       .number()
       .int()
@@ -41,6 +43,7 @@ export type FailureEventV1 = z.infer<typeof FailureEventV1>;
 
 export const FailureQueryResponseV1 = z.object({
   refreshed_at: z.number().int().min(0),
+  window: z.enum(WINDOWS),
   retention_hours: z.literal(FAILURE_RETENTION_HOURS),
   limit: z.number().int().min(1).max(MAX_FAILURE_QUERY_LIMIT),
   failures: z.array(FailureEventV1),
