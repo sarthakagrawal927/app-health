@@ -63,6 +63,13 @@ class ProductionStatement implements D1PreparedStatement {
         revoked_at: null,
       } as T;
     }
+    if (this.sql.includes('FROM apps WHERE id = ?') && this.values[0] === 'app-1') {
+      return {
+        id: 'app-1',
+        name: 'polaris',
+        created_at: 1,
+      } as T;
+    }
     if (this.sql.includes('FROM environments WHERE app_id = ? AND name = ?')) {
       return {
         id: `env-${String(this.values[1])}`,
@@ -74,6 +81,14 @@ class ProductionStatement implements D1PreparedStatement {
     return null;
   }
   async all<T>() {
+    if (this.sql.includes('FROM environments WHERE app_id = ?') && this.values[0] === 'app-1') {
+      return {
+        results: [
+          { id: 'env-local', app_id: 'app-1', name: 'local', created_at: 1 },
+          { id: 'env-staging', app_id: 'app-1', name: 'staging', created_at: 2 },
+        ] as T[],
+      };
+    }
     return { results: [] as T[] };
   }
   async run(): Promise<D1RunResult> {
@@ -400,6 +415,84 @@ describe('worker production boundaries', () => {
       'https://health.sassmaker.com',
     );
     expect(response.status).toBe(200);
+  });
+
+  it('uses a product key to list only its product and environments', async () => {
+    const response = await call(
+      'GET',
+      '/v1/apps',
+      productionEnv(),
+      undefined,
+      bearer('ahk_polaris-product'),
+      'https://health.sassmaker.com',
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      apps: [
+        {
+          app: { id: 'app-1', name: 'polaris', created_at: 1 },
+          environments: [
+            { id: 'env-local', app_id: 'app-1', name: 'local', created_at: 1 },
+            { id: 'env-staging', app_id: 'app-1', name: 'staging', created_at: 2 },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('rejects cross-product reads and owner mutations from a product session', async () => {
+    const env = productionEnv();
+    const auth = bearer('ahk_polaris-product');
+    await expect(
+      call(
+        'GET',
+        '/v1/installation/status?app_id=app-other&environment_id=env-other',
+        env,
+        undefined,
+        auth,
+        'https://health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(403);
+    await expect(
+      call(
+        'GET',
+        '/v1/endpoints?app_id=app-other&environment_id=env-other&window=15m',
+        env,
+        undefined,
+        auth,
+        'https://health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(403);
+    await expect(
+      call(
+        'GET',
+        '/v1/failures?app_id=app-other&environment_id=env-other&limit=10',
+        env,
+        undefined,
+        auth,
+        'https://health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(403);
+    await expect(
+      call(
+        'POST',
+        '/v1/apps',
+        env,
+        { name: 'other', environment: 'production' },
+        auth,
+        'https://health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(403);
+    await expect(
+      call(
+        'POST',
+        '/v1/apps/app-1/environments/env-staging/revoke',
+        env,
+        undefined,
+        auth,
+        'https://health.sassmaker.com',
+      ).then((response) => response.status),
+    ).resolves.toBe(403);
   });
 
   it('serves the dashboard shell without exposing owner data', async () => {

@@ -82,8 +82,9 @@ export class AppHealthService {
     };
   }
 
-  async listApps(): Promise<ListAppsResponseV1> {
-    const apps = await this.repos.apps.listApps();
+  async listApps(appId?: string): Promise<ListAppsResponseV1> {
+    const scopedApp = appId ? await this.repos.apps.getApp(appId) : null;
+    const apps = appId ? (scopedApp ? [scopedApp] : []) : await this.repos.apps.listApps();
     return {
       apps: await Promise.all(
         apps.map(async (app) => ({
