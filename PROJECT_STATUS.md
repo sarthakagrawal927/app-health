@@ -1,6 +1,6 @@
 # app-health — PROJECT STATUS
 
-Last updated: 2026-07-25
+Last updated: 2026-07-27
 
 ## Why / What
 
@@ -57,6 +57,13 @@ asynchronous endpoint summaries, aggregate-only storage, and a
   that exact asset into Free AI behind an optional ingest-key binding; Free
   AI checks and privacy review pass, while its manual production workflow and
   environment-scoped key remain operator-owned
+- 2026-07-27 — shipped product-scoped ingest keys with bounded SDK-selected
+  environments, deployed Worker version
+  `a38b0ca5-8d31-422d-8839-157478f3d516` from SHA
+  `47ac18ab87675631fe7c01dde6e4ffaee4f7628e`, published Go core `v0.1.6`
+  and Echo v5 adapter `v5.1.1`, and merged Polaris PR #282; real Local and
+  Staging `/health` traffic reached the shared product key before the legacy
+  staging key was revoked
 
 ## Products
 
@@ -81,6 +88,10 @@ asynchronous endpoint summaries, aggregate-only storage, and a
 - **Storage-bounded ingest:** retry-stable batch IDs reduce temporary D1 dedupe rows by up to 100× at the default batch size; successful requests stay aggregate-only and individual 4xx/5xx details expire after 24 hours.
 - **Collection transparency:** an on-demand dashboard view shows the latest 50 retained 4xx/5xx failures, exact accepted telemetry fields, storage/retention boundaries, excluded payload and identity data, contract provenance, and last-refresh evidence without polling or adding storage.
 - **Existing OpenTelemetry:** authenticated `/v1/traces` intake accepts bounded OTLP/HTTP protobuf or JSON, projects only trusted HTTP server endpoint summaries, reuses the existing aggregate pipeline, and discloses upstream trace sampling in the API and dashboard.
+- **Product environments:** one product-scoped key can route SDK or OTLP
+  endpoint summaries into bounded client-selected environments; legacy
+  environment keys remain compatible during migration, and the dashboard
+  switches endpoint, installation, and failure views together.
 
 ## Todo / Planned / Deferred / Blocked
 
