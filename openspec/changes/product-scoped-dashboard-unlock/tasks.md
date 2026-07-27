@@ -12,5 +12,5 @@
 
 ## 3. Release
 
-- [ ] 3.1 Merge the App Health-only change after CI passes and deploy the Worker from clean, synced main with the exact SHA tag.
-- [ ] 3.2 Verify the existing Polaris key returns only Polaris with Local/Staging data and rejects another app id.
+- [x] 3.1 Merge the App Health-only change after CI passes and deploy the Worker from clean, synced main with the exact SHA tag.
+- [x] 3.2 Verify the existing Polaris key returns only Polaris with Local/Staging data and rejects another app id.
