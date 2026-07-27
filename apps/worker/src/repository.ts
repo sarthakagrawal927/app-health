@@ -27,6 +27,7 @@ export interface AppRepository {
 /** Persisted environment records, scoped to an app. */
 export interface EnvironmentRepository {
   createEnvironment(appId: string, name: string, now: number): Promise<EnvironmentV1>;
+  resolveEnvironment(appId: string, name: string, now: number): Promise<EnvironmentV1 | null>;
   getEnvironment(envId: string): Promise<EnvironmentV1 | null>;
   listEnvironments(appId: string): Promise<EnvironmentV1[]>;
 }
@@ -36,6 +37,14 @@ export interface EnvironmentRepository {
  * key is returned to the caller exactly once at creation time.
  */
 export interface KeyRepository {
+  /** Create a product-scoped key that can route to explicit environments. */
+  createProductKey(
+    appId: string,
+    now: number,
+  ): Promise<{
+    record: KeyRecordV1;
+    rawKey: string;
+  }>;
   /** Create a new key and return the stored record plus the raw one-time key. */
   createKey(
     appId: string,
@@ -147,6 +156,8 @@ export interface SetupRepository {
     now: number,
   ): Promise<{ app: AppV1; environment: EnvironmentV1; record: KeyRecordV1; rawKey: string }>;
 }
+
+export const MAX_ENVIRONMENTS_PER_APP = 20;
 
 /** Aggregate of all V0 repositories. The in-memory adapter implements this. */
 export interface AppHealthRepositories {

@@ -44,11 +44,16 @@ function makeEvent(overrides: Partial<EventV1> & { event_id: string }): EventV1 
   };
 }
 
-function makeBatch(events: EventV1[], runtime: Runtime = 'node'): EventBatchV1 {
+function makeBatch(
+  events: EventV1[],
+  runtime: Runtime = 'node',
+  environment?: string,
+): EventBatchV1 {
   return {
     batch_id: uuid(9000 + events.length),
     schema_version: 'v1',
     runtime,
+    ...(environment ? { environment } : {}),
     release: '0.0.0-test',
     events,
   };
@@ -95,7 +100,11 @@ describe('ingest key authentication', () => {
     // Create a new app/key, then revoke it.
     const created = await service.createApp({ name: 'revoke-test', environment: 'prod' }, NOW);
     const rawKey = created.key.key;
-    const ingestBatch = makeBatch([makeEvent({ event_id: uuid(2), timestamp: NOW, route: '/r' })]);
+    const ingestBatch = makeBatch(
+      [makeEvent({ event_id: uuid(2), timestamp: NOW, route: '/r' })],
+      'node',
+      'prod',
+    );
     const before = await service.ingest(rawKey, ingestBatch, NOW);
     expect(before.ok).toBe(true);
     // Revoke the active key for this environment.
@@ -120,6 +129,20 @@ describe('ingest key authentication', () => {
     expect(record).not.toBeNull();
     expect(record).not.toHaveProperty('rawKey');
     expect(record?.verifier_hash).not.toBe(created.key.key);
+    expect(created.key.environment_id).toBeNull();
+  });
+
+  it('requires an environment for product keys and rejects conflicts for legacy keys', async () => {
+    const { service } = await freshService();
+    const created = await service.createApp({ name: 'product-key', environment: 'prod' }, NOW);
+    const event = makeEvent({ event_id: uuid(200), route: '/scope' });
+    await expect(service.ingest(created.key.key, makeBatch([event]), NOW)).resolves.toMatchObject({
+      ok: false,
+      status: 400,
+    });
+    await expect(
+      service.ingest(SEED_KEY, makeBatch([event], 'node', 'staging'), NOW),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
   });
 });
 
@@ -258,8 +281,16 @@ describe('ingest idempotent batch handling', () => {
     const first = await service.createApp({ name: 'dedupe-a', environment: 'prod' }, NOW);
     const second = await service.createApp({ name: 'dedupe-b', environment: 'prod' }, NOW);
     const sharedEvent = makeEvent({ event_id: uuid(22), timestamp: NOW, route: '/shared-id' });
-    const firstResult = await service.ingest(first.key.key, makeBatch([sharedEvent]), NOW);
-    const secondResult = await service.ingest(second.key.key, makeBatch([sharedEvent]), NOW);
+    const firstResult = await service.ingest(
+      first.key.key,
+      makeBatch([sharedEvent], 'node', 'prod'),
+      NOW,
+    );
+    const secondResult = await service.ingest(
+      second.key.key,
+      makeBatch([sharedEvent], 'node', 'prod'),
+      NOW,
+    );
     expect(firstResult).toMatchObject({ ok: true, accepted: 1 });
     expect(secondResult).toMatchObject({ ok: true, accepted: 1 });
   });
@@ -319,14 +350,18 @@ describe('ingest aggregate-only storage', () => {
     const created = await service.createApp({ name: 'sampled-app', environment: 'prod' }, NOW);
     await service.ingest(
       created.key.key,
-      makeBatch([
-        makeEvent({
-          event_id: uuid(31),
-          timestamp: NOW,
-          route: '/rare/:id',
-          method: 'PATCH',
-        }),
-      ]),
+      makeBatch(
+        [
+          makeEvent({
+            event_id: uuid(31),
+            timestamp: NOW,
+            route: '/rare/:id',
+            method: 'PATCH',
+          }),
+        ],
+        'node',
+        'prod',
+      ),
       NOW,
     );
     adapter.asRepositories().buckets.queryBuckets = async () => [];
@@ -383,7 +418,11 @@ describe('ingest aggregate-only storage', () => {
     const other = await service.createApp({ name: 'other', environment: 'staging' }, NOW);
     await service.ingest(
       other.key.key,
-      makeBatch([makeEvent({ event_id: uuid(35), status_code: 500, route: '/private' })]),
+      makeBatch(
+        [makeEvent({ event_id: uuid(35), status_code: 500, route: '/private' })],
+        'node',
+        'staging',
+      ),
       NOW,
     );
 
@@ -541,7 +580,7 @@ describe('project and environment isolation', () => {
         route: '/isolated',
       }),
     );
-    await service.ingest(otherKey, makeBatch(events), NOW);
+    await service.ingest(otherKey, makeBatch(events, 'node', 'prod'), NOW);
     // Query the seed environment: should not see /isolated.
     const seedResponse = await service.queryEndpoints(SEED_APP_ID, SEED_ENV_ID, '15m', NOW);
     expect(seedResponse.endpoints.find((e) => e.route === '/isolated')).toBeUndefined();
@@ -562,7 +601,11 @@ describe('project and environment isolation', () => {
     const other = await service.createApp({ name: 'cross-app', environment: 'prod' }, NOW);
     await service.ingest(
       other.key.key,
-      makeBatch([makeEvent({ event_id: uuid(410), timestamp: NOW, route: '/secret' })]),
+      makeBatch(
+        [makeEvent({ event_id: uuid(410), timestamp: NOW, route: '/secret' })],
+        'node',
+        'prod',
+      ),
       NOW,
     );
     // Query with the seed app_id but the other environment_id.
@@ -579,12 +622,45 @@ describe('project and environment isolation', () => {
     // After ingest: connected.
     await service.ingest(
       other.key.key,
-      makeBatch([makeEvent({ event_id: uuid(420), timestamp: NOW, route: '/s' })]),
+      makeBatch([makeEvent({ event_id: uuid(420), timestamp: NOW, route: '/s' })], 'node', 'prod'),
       NOW,
     );
     const after = await service.installationStatus(other.app.id, other.environment.id, NOW);
     expect(after.state).toBe('connected');
     expect(after.runtime).toBe('node');
+  });
+
+  it('isolates local and staging behind one product key', async () => {
+    const { service } = await freshService();
+    const product = await service.createApp({ name: 'polaris', environment: 'local' }, NOW);
+    await service.ingest(
+      product.key.key,
+      makeBatch([makeEvent({ event_id: uuid(430), route: '/health' })], 'node', 'local'),
+      NOW,
+    );
+    await service.ingest(
+      product.key.key,
+      makeBatch([makeEvent({ event_id: uuid(431), route: '/health' })], 'node', 'staging'),
+      NOW,
+    );
+
+    const listed = await service.listApps();
+    const environments = listed.apps.find((entry) => entry.app.id === product.app.id)?.environments;
+    expect(environments?.map((environment) => environment.name).sort()).toEqual([
+      'local',
+      'staging',
+    ]);
+    const staging = environments?.find((environment) => environment.name === 'staging');
+    expect(staging).toBeDefined();
+    const localEndpoints = await service.queryEndpoints(
+      product.app.id,
+      product.environment.id,
+      '15m',
+      NOW,
+    );
+    const stagingEndpoints = await service.queryEndpoints(product.app.id, staging!.id, '15m', NOW);
+    expect(localEndpoints.endpoints[0]?.request_count).toBe(1);
+    expect(stagingEndpoints.endpoints[0]?.request_count).toBe(1);
   });
 });
 

@@ -28,9 +28,9 @@ const (
 // Config configures a Go SDK Client.
 //
 // IngestURL is the fully-qualified v1 ingest endpoint
-// (e.g. "http://localhost:8787/v1/ingest"). IngestKey is the project
-// environment ingest key supplied by the operator. Release is an optional
-// release tag attached to every batch.
+// (e.g. "http://localhost:8787/v1/ingest"). IngestKey is the product ingest
+// key supplied by the operator. Environment routes the batch beneath that
+// product. Release is an optional release tag attached to every batch.
 //
 // All tunable fields default to sane values when zero, so a minimal
 // installation only needs IngestURL and IngestKey.
@@ -320,6 +320,7 @@ func (c *Client) buildBatch(events []EventV1) EventBatchV1 {
 		BatchID:       newEventID(),
 		SchemaVersion: SchemaVersion,
 		Runtime:       RuntimeGo,
+		Environment:   strings.ToLower(strings.TrimSpace(c.cfg.Environment)),
 		Events:        events,
 	}
 	if r := c.cfg.Release; r != "" {

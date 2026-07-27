@@ -56,11 +56,12 @@ describe('D1 control plane', () => {
       expect.arrayContaining([
         expect.stringContaining('INSERT INTO apps'),
         expect.stringContaining('INSERT INTO environments'),
-        expect.stringContaining('INSERT INTO keys'),
+        expect.stringContaining('INSERT INTO product_keys'),
         expect.stringContaining('INSERT INTO installation_status'),
       ]),
     );
     expect(created.rawKey).toMatch(/^ahk_/);
+    expect(created.record.environment_id).toBeNull();
     expect(created.record.verifier_hash).not.toBe(created.rawKey);
     expect(JSON.stringify(db.statements.map((statement) => statement.values))).not.toContain(
       created.rawKey,
@@ -96,11 +97,39 @@ describe('D1 control plane', () => {
     expect(db.statements[0].values[0]).not.toBe('ahk_raw-secret');
   });
 
+  it('creates product keys and resolves one environment name per app', async () => {
+    const db = new Database();
+    const control = new D1ControlPlane(db);
+    const created = await control.createProductKey('app-1', 100);
+    expect(created.record.environment_id).toBeNull();
+    expect(db.statements[0].sql).toContain('INSERT INTO product_keys');
+
+    db.firstResults.push(
+      null,
+      { count: 1 },
+      {
+        id: 'env-local',
+        app_id: 'app-1',
+        name: 'local',
+        created_at: 100,
+      },
+    );
+    await expect(control.resolveEnvironment('app-1', 'local', 100)).resolves.toMatchObject({
+      id: 'env-local',
+      app_id: 'app-1',
+      name: 'local',
+    });
+    expect(db.statements.some((statement) => statement.sql.includes('INSERT OR IGNORE'))).toBe(
+      true,
+    );
+  });
+
   it('revokes active keys and propagates D1 write failures', async () => {
     const db = new Database();
     await new D1ControlPlane(db).revokeKey('key-1', 200);
     expect(db.statements[0].sql).toContain('revoked_at IS NULL');
     expect(db.statements[0].values).toEqual([200, 'key-1']);
+    expect(db.statements[1].sql).toContain('UPDATE product_keys');
 
     const failing = new Database();
     failing.runError = new Error('injected D1 failure');

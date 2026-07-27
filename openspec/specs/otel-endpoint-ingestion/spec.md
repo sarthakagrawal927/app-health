@@ -7,18 +7,26 @@ Define authenticated, privacy-bounded OTLP/HTTP projection into endpoint health.
 ## Requirements
 
 ### Requirement: Authenticated OTLP HTTP trace intake
-The ingest host SHALL accept bounded OTLP/HTTP trace export requests at `/v1/traces` only when the existing environment-scoped bearer key is valid, and SHALL support binary protobuf and OTLP JSON request encodings.
+The ingest host SHALL accept bounded OTLP/HTTP trace export requests at `/v1/traces` only when a product-scoped or legacy environment-scoped bearer key is valid, SHALL support binary protobuf and OTLP JSON request encodings, and SHALL resolve product-key environments only from the standard `deployment.environment.name` resource attribute.
 
 #### Scenario: Existing Collector exports traces
 - **WHEN** a standard OTLP/HTTP exporter sends a valid authenticated trace request
-- **THEN** App Health returns a protocol-valid success response and scopes all accepted endpoint data to the key's app and environment
+- **THEN** App Health returns a protocol-valid success response and scopes all accepted endpoint data to the authenticated app and resolved environment
 
 #### Scenario: OTLP key is invalid
 - **WHEN** an OTLP export uses a missing, invalid, or revoked bearer key
 - **THEN** ingest rejects it before projecting or persisting any endpoint data
 
+#### Scenario: Product-key OTLP environment is absent
+- **WHEN** a product-key OTLP resource does not declare a valid `deployment.environment.name`
+- **THEN** ingest rejects its eligible spans without writing telemetry
+
+#### Scenario: One export carries multiple environments
+- **WHEN** one valid product-key export contains eligible resources for `local` and `staging`
+- **THEN** ingest groups and persists each resource's endpoint summaries only within its resolved environment
+
 ### Requirement: Privacy-bounded server span projection
-OTLP ingest SHALL project only HTTP server spans with a trusted normalized `http.route` into method, route, status, duration, timestamp, optional release, and deterministic event identity, and SHALL NOT persist or forward any other resource, span, attribute, event, link, baggage, URL, header, body, identity, log, stack, or trace data.
+OTLP ingest SHALL read only `deployment.environment.name` for routing and SHALL project only HTTP server spans with a trusted normalized `http.route` into method, route, status, duration, timestamp, optional release, and deterministic event identity. It SHALL NOT persist or forward the routing label or any other resource, span, attribute, event, link, baggage, URL, header, body, identity, log, stack, or trace data.
 
 #### Scenario: Server span contains sensitive attributes
 - **WHEN** an eligible server span also contains a concrete URL, query, user identifier, headers, exception event, and arbitrary attributes

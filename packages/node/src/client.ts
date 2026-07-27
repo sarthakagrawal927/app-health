@@ -36,8 +36,10 @@ export interface EventInput {
 }
 
 export interface AppHealthClientOptions {
-  /** Ingest key scoped to one app and one environment. */
+  /** Ingest key scoped to one product. */
   key: string;
+  /** Deployment environment routed beneath the authenticated product. */
+  environment?: string;
   /** Absolute ingest URL, e.g. http://localhost:8787/v1/ingest. */
   endpoint: string;
   /** Optional release tag applied to every event unless overridden. */
@@ -130,6 +132,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
   const now = options.now ?? (() => Date.now());
   const uuid = options.randomUUID ?? randomUUID;
   const defaultRelease = normalizeRelease(options.release);
+  const environment = normalizeEnvironment(options.environment);
   const runtime = options.runtime ?? 'node';
   if (runtime !== 'node' && runtime !== 'worker') {
     throw new Error('@saas-maker/app-health: runtime must be `node` or `worker`');
@@ -224,6 +227,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
       batch_id: uuid(),
       schema_version: SCHEMA_VERSION,
       runtime,
+      ...(environment !== undefined ? { environment } : {}),
       ...(defaultRelease !== undefined ? { release: defaultRelease } : {}),
       events,
     };
@@ -269,6 +273,18 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
     close,
     diagnostics: () => diag.snapshot(),
   };
+}
+
+function normalizeEnvironment(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    throw new Error('@saas-maker/app-health: environment must be a lower-case slug');
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(normalized)) {
+    throw new Error('@saas-maker/app-health: environment must be a lower-case slug');
+  }
+  return normalized;
 }
 
 function parseEndpoint(value: unknown): string | null {

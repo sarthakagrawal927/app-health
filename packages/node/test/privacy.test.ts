@@ -18,7 +18,14 @@ const ALLOWED_EVENT_KEYS = [
   'status_code',
   'timestamp',
 ].sort();
-const ALLOWED_BATCH_KEYS = ['batch_id', 'events', 'release', 'runtime', 'schema_version'].sort();
+const ALLOWED_BATCH_KEYS = [
+  'batch_id',
+  'environment',
+  'events',
+  'release',
+  'runtime',
+  'schema_version',
+].sort();
 
 const FORBIDDEN_FRAGMENTS = [
   'authorization',
@@ -47,6 +54,7 @@ describe('privacy: serialized batches exclude all request content', () => {
     const client = createAppHealthClient({
       key: 'ahk_test',
       endpoint: 'http://localhost:8787/v1/ingest',
+      environment: 'local',
       fetch: controller.fetch,
       disableTimer: true,
       release: 'v1.0.0',
@@ -69,6 +77,7 @@ describe('privacy: serialized batches exclude all request content', () => {
     expect(Object.keys(batch).sort()).toEqual(ALLOWED_BATCH_KEYS);
     expect(batch.schema_version).toBe('v1');
     expect(batch.runtime).toBe('node');
+    expect(batch.environment).toBe('local');
     for (const event of batch.events) {
       const keys = Object.keys(event).sort();
       for (const k of keys) expect(ALLOWED_EVENT_KEYS).toContain(k);
@@ -79,6 +88,16 @@ describe('privacy: serialized batches exclude all request content', () => {
     for (const fragment of FORBIDDEN_FRAGMENTS) {
       expect(serialized.toLowerCase()).not.toContain(fragment.toLowerCase());
     }
+  });
+
+  it('rejects an unsafe environment label before sending', () => {
+    expect(() =>
+      createAppHealthClient({
+        key: 'ahk_test',
+        endpoint: 'https://ingest.example/v1/ingest',
+        environment: '../production',
+      }),
+    ).toThrow(/environment must be a lower-case slug/);
   });
 
   it('labels Cloudflare JavaScript batches as worker', async () => {

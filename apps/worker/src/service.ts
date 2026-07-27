@@ -34,6 +34,15 @@ export type IngestResult =
   { ok: true; accepted: number; duplicates: number } | { ok: false; status: number; error: string };
 
 export type EndpointEvent = EventV1 & { upstream_sampled?: boolean };
+export type OtlpEndpointEvent = EndpointEvent & { environment?: string };
+
+interface ResolvedScope {
+  app_id: string;
+  environment_id: string;
+}
+
+type ScopeResolution =
+  { ok: true; scope: ResolvedScope } | { ok: false; status: number; error: string };
 
 /** V0 worker service. Stateless aside from the injected repositories. */
 export class AppHealthService {
@@ -60,7 +69,7 @@ export class AppHealthService {
     }
     const app = await this.repos.apps.createApp(request.name, now);
     const env = await this.repos.environments.createEnvironment(app.id, request.environment, now);
-    const { record, rawKey } = await this.repos.keys.createKey(app.id, env.id, now);
+    const { record, rawKey } = await this.repos.keys.createProductKey(app.id, now);
     return {
       app,
       environment: env,
@@ -118,25 +127,16 @@ export class AppHealthService {
         return { ok: false, status: 400, error: 'event timestamp outside clock-skew window' };
       }
     }
+    const resolution = await this.resolveScope(keyRecord, batch.environment, now);
+    if (!resolution.ok) return resolution;
+    const scope = resolution.scope;
     const batchId = batch.batch_id ?? (await legacyBatchID(batch));
-    const seen = await this.repos.dedupe.markSeen(
-      keyRecord.app_id,
-      keyRecord.environment_id,
-      batchId,
-      now,
-    );
+    const seen = await this.repos.dedupe.markSeen(scope.app_id, scope.environment_id, batchId, now);
     if (!seen) return { ok: true, accepted: 0, duplicates: batch.events.length };
     try {
-      return await this.persistEvents(
-        keyRecord,
-        batch.runtime,
-        batch.release,
-        batch.events,
-        0,
-        now,
-      );
+      return await this.persistEvents(scope, batch.runtime, batch.release, batch.events, 0, now);
     } catch (error) {
-      await this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, batchId);
+      await this.repos.dedupe.forget(scope.app_id, scope.environment_id, batchId);
       throw error;
     }
   }
@@ -152,7 +152,7 @@ export class AppHealthService {
     keyRecord: KeyRecordV1,
     runtime: Runtime,
     release: string | undefined,
-    events: readonly EndpointEvent[],
+    events: readonly OtlpEndpointEvent[],
     now: number,
   ): Promise<IngestResult> {
     for (const event of events) {
@@ -161,81 +161,133 @@ export class AppHealthService {
       }
     }
 
-    const acceptedEvents: EndpointEvent[] = [];
-    const acceptedEventIds: string[] = [];
-    let duplicates = 0;
+    const grouped = new Map<string | undefined, OtlpEndpointEvent[]>();
     for (const event of events) {
-      const seen = await this.repos.dedupe.markSeen(
-        keyRecord.app_id,
-        keyRecord.environment_id,
-        event.event_id,
-        now,
-      );
-      if (!seen) {
-        duplicates += 1;
-        continue;
-      }
-      acceptedEvents.push(event);
-      acceptedEventIds.push(event.event_id);
+      const group = grouped.get(event.environment) ?? [];
+      group.push(event);
+      grouped.set(event.environment, group);
     }
 
-    try {
-      return await this.persistEvents(keyRecord, runtime, release, acceptedEvents, duplicates, now);
-    } catch (error) {
-      await Promise.all(
-        acceptedEventIds.map((eventId) =>
-          this.repos.dedupe.forget(keyRecord.app_id, keyRecord.environment_id, eventId),
-        ),
-      );
-      throw error;
+    const resolvedGroups: { scope: ResolvedScope; events: OtlpEndpointEvent[] }[] = [];
+    for (const [environment, groupEvents] of grouped) {
+      const resolution = await this.resolveScope(keyRecord, environment, now);
+      if (!resolution.ok) return resolution;
+      resolvedGroups.push({ scope: resolution.scope, events: groupEvents });
     }
+
+    let accepted = 0;
+    let duplicates = 0;
+    for (const group of resolvedGroups) {
+      const acceptedEvents: EndpointEvent[] = [];
+      const acceptedEventIds: string[] = [];
+      for (const event of group.events) {
+        const seen = await this.repos.dedupe.markSeen(
+          group.scope.app_id,
+          group.scope.environment_id,
+          event.event_id,
+          now,
+        );
+        if (!seen) {
+          duplicates += 1;
+          continue;
+        }
+        const { environment: _environment, ...endpointEvent } = event;
+        acceptedEvents.push(endpointEvent);
+        acceptedEventIds.push(event.event_id);
+      }
+      try {
+        const result = await this.persistEvents(
+          group.scope,
+          runtime,
+          release,
+          acceptedEvents,
+          duplicates,
+          now,
+        );
+        accepted += result.ok ? result.accepted : 0;
+      } catch (error) {
+        await Promise.all(
+          acceptedEventIds.map((eventId) =>
+            this.repos.dedupe.forget(group.scope.app_id, group.scope.environment_id, eventId),
+          ),
+        );
+        throw error;
+      }
+    }
+    return { ok: true, accepted, duplicates };
+  }
+
+  private async resolveScope(
+    keyRecord: KeyRecordV1,
+    requestedEnvironment: string | undefined,
+    now: number,
+  ): Promise<ScopeResolution> {
+    if (keyRecord.environment_id !== null) {
+      const environment = await this.repos.environments.getEnvironment(keyRecord.environment_id);
+      if (!environment || environment.app_id !== keyRecord.app_id) {
+        return { ok: false, status: 401, error: 'invalid ingest key scope' };
+      }
+      if (requestedEnvironment !== undefined && requestedEnvironment !== environment.name) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'environment does not match ingest key scope',
+        };
+      }
+      return {
+        ok: true,
+        scope: { app_id: keyRecord.app_id, environment_id: environment.id },
+      };
+    }
+    if (!requestedEnvironment) {
+      return { ok: false, status: 400, error: 'environment is required for product key' };
+    }
+    const environment = await this.repos.environments.resolveEnvironment(
+      keyRecord.app_id,
+      requestedEnvironment,
+      now,
+    );
+    if (!environment) {
+      return { ok: false, status: 409, error: 'product environment limit reached' };
+    }
+    return {
+      ok: true,
+      scope: { app_id: keyRecord.app_id, environment_id: environment.id },
+    };
   }
 
   private async persistEvents(
-    keyRecord: KeyRecordV1,
+    scope: ResolvedScope,
     runtime: Runtime,
     release: string | undefined,
     acceptedEvents: readonly EndpointEvent[],
     duplicates: number,
     now: number,
   ): Promise<IngestResult> {
-    await this.repos.inventory?.recordObserved(
-      keyRecord.app_id,
-      keyRecord.environment_id,
-      acceptedEvents,
-    );
-    await this.repos.failures?.recordFailures(
-      keyRecord.app_id,
-      keyRecord.environment_id,
-      acceptedEvents,
-    );
+    await this.repos.inventory?.recordObserved(scope.app_id, scope.environment_id, acceptedEvents);
+    await this.repos.failures?.recordFailures(scope.app_id, scope.environment_id, acceptedEvents);
     if (this.repos.buckets.upsertEvents) {
       await this.repos.buckets.upsertEvents(
-        keyRecord.app_id,
-        keyRecord.environment_id,
+        scope.app_id,
+        scope.environment_id,
         runtime,
         release,
         acceptedEvents,
       );
     } else {
-      for (const event of acceptedEvents) await this.applyEvent(keyRecord, event);
+      for (const event of acceptedEvents) await this.applyEvent(scope, event);
     }
     if (acceptedEvents.length > 0) {
-      await this.repos.installation.recordIngest(
-        keyRecord.app_id,
-        keyRecord.environment_id,
-        runtime,
-        now,
-      );
+      await this.repos.installation.recordIngest(scope.app_id, scope.environment_id, runtime, now);
     }
     return { ok: true, accepted: acceptedEvents.length, duplicates };
   }
 
-  private async applyEvent(keyRecord: KeyRecordV1, event: EndpointEvent): Promise<void> {
+  private async applyEvent(scope: ResolvedScope, event: EndpointEvent): Promise<void> {
     const bucketStart = Math.floor(event.timestamp / BUCKET_MS) * BUCKET_MS;
     await this.repos.buckets.upsertBucket({
-      app_id: keyRecord.app_id,
-      environment_id: keyRecord.environment_id,
+      app_id: scope.app_id,
+      environment_id: scope.environment_id,
       bucket_start: bucketStart,
       method: event.method,
       route: event.route,

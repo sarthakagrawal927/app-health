@@ -28,10 +28,10 @@ The Node SDK SHALL use a bounded in-memory queue, short delivery timeout, bounde
 - **THEN** the application responses remain unchanged and the SDK bounds queued telemetry
 
 ### Requirement: Node installation API
-The Node SDK SHALL support installation from `@saas-maker/app-health`, configuration with an ingest key and endpoint, and an optional Express adapter, while environment and release MAY be supplied explicitly without additional required setup.
+The Node SDK SHALL support installation from `@saas-maker/app-health`, configuration with an ingest key, endpoint, and bounded environment, and an optional Express adapter. Every product-key batch SHALL declare that environment while release remains optional.
 
 #### Scenario: Minimal Express installation
-- **WHEN** the operator installs the package and mounts middleware with a valid key
+- **WHEN** the operator installs the package and mounts middleware with a valid key and environment
 - **THEN** observed Express requests are batched without requiring route registration, a contracts package, or Node startup flags
 
 ### Requirement: Express records trusted templates only

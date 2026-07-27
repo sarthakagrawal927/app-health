@@ -2,19 +2,19 @@
 
 ## Purpose
 
-Define minimal local app creation, scoped ingest-key lifecycle, and installation verification.
+Define minimal local app creation, product-scoped ingest-key lifecycle, and installation verification.
 
 ## Requirements
 
 ### Requirement: Minimal app creation
-The system SHALL let the authenticated single operator create an app name and environment without observability configuration, SHALL durably create the records as one transaction, and SHALL produce one ingest key.
+The system SHALL let the authenticated single operator create an app name and initial environment without observability configuration, SHALL durably create the records as one transaction, and SHALL produce one product-scoped ingest key.
 
 #### Scenario: Operator creates an app
 - **WHEN** the authenticated operator submits a valid app name and environment
-- **THEN** the system durably creates the scoped app and shows the new ingest key exactly once
+- **THEN** the system durably creates the app and initial environment and shows the new product ingest key exactly once
 
 ### Requirement: Safe ingest keys
-The system SHALL store only a SHA-256 key verifier in D1, scope a key to one app and environment, return the raw key only in the no-store creation response, and support revocation.
+The system SHALL store only a SHA-256 key verifier in D1, scope each newly issued key to one app, return the raw key only in the no-store creation response, and support revocation. Existing environment-scoped keys SHALL remain valid only for their stored app and environment during migration.
 
 #### Scenario: Revoked key sends telemetry
 - **WHEN** ingest receives a batch using a revoked key

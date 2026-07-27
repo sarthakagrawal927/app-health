@@ -20,6 +20,7 @@ import type {
   KeyRepository,
   SetupRepository,
 } from './repository.js';
+import { MAX_ENVIRONMENTS_PER_APP } from './repository.js';
 
 export interface D1RunResult {
   success: boolean;
@@ -83,7 +84,7 @@ export class D1ControlPlane
     const record: KeyRecordV1 = {
       id: id('key'),
       app_id: app.id,
-      environment_id: environment.id,
+      environment_id: null,
       verifier_hash: await hashKey(rawKey),
       created_at: now,
       revoked_at: null,
@@ -97,9 +98,9 @@ export class D1ControlPlane
         .bind(environment.id, app.id, environment.name, now),
       this.db
         .prepare(
-          'INSERT INTO keys (id, app_id, environment_id, verifier_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)',
+          'INSERT INTO product_keys (id, app_id, verifier_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)',
         )
-        .bind(record.id, app.id, environment.id, record.verifier_hash, now),
+        .bind(record.id, app.id, record.verifier_hash, now),
       this.db
         .prepare(
           'INSERT INTO installation_status (app_id, environment_id, runtime, first_seen, last_seen) VALUES (?, ?, NULL, NULL, NULL)',
@@ -143,6 +144,40 @@ export class D1ControlPlane
     return environment;
   }
 
+  async resolveEnvironment(
+    appId: string,
+    name: string,
+    now: number,
+  ): Promise<EnvironmentV1 | null> {
+    const existing = await this.db
+      .prepare(
+        'SELECT id, app_id, name, created_at FROM environments WHERE app_id = ? AND name = ?',
+      )
+      .bind(appId, name)
+      .first<EnvironmentV1>();
+    if (existing) return existing;
+    const count = await this.db
+      .prepare('SELECT COUNT(*) AS count FROM environments WHERE app_id = ?')
+      .bind(appId)
+      .first<{ count: number }>();
+    if ((count?.count ?? 0) >= MAX_ENVIRONMENTS_PER_APP) return null;
+    const environment: EnvironmentV1 = { id: id('env'), app_id: appId, name, created_at: now };
+    await this.db
+      .prepare(
+        'INSERT OR IGNORE INTO environments (id, app_id, name, created_at) VALUES (?, ?, ?, ?)',
+      )
+      .bind(environment.id, appId, name, now)
+      .run();
+    return (
+      (await this.db
+        .prepare(
+          'SELECT id, app_id, name, created_at FROM environments WHERE app_id = ? AND name = ?',
+        )
+        .bind(appId, name)
+        .first<EnvironmentV1>()) ?? environment
+    );
+  }
+
   getEnvironment(envId: string): Promise<EnvironmentV1 | null> {
     return this.db
       .prepare('SELECT id, app_id, name, created_at FROM environments WHERE id = ?')
@@ -180,13 +215,32 @@ export class D1ControlPlane
     return { record, rawKey };
   }
 
+  async createProductKey(appId: string, now: number) {
+    const rawKey = generateRawKey();
+    const record: KeyRecordV1 = {
+      id: id('key'),
+      app_id: appId,
+      environment_id: null,
+      verifier_hash: await hashKey(rawKey),
+      created_at: now,
+      revoked_at: null,
+    };
+    await this.db
+      .prepare(
+        'INSERT INTO product_keys (id, app_id, verifier_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)',
+      )
+      .bind(record.id, appId, record.verifier_hash, now)
+      .run();
+    return { record, rawKey };
+  }
+
   async verifyKey(rawKey: string): Promise<KeyRecordV1 | null> {
     const verifier = await hashKey(rawKey);
     return this.db
       .prepare(
-        'SELECT id, app_id, environment_id, verifier_hash, created_at, revoked_at FROM keys WHERE verifier_hash = ? AND revoked_at IS NULL',
+        'SELECT id, app_id, environment_id, verifier_hash, created_at, revoked_at FROM keys WHERE verifier_hash = ? AND revoked_at IS NULL UNION ALL SELECT id, app_id, NULL AS environment_id, verifier_hash, created_at, revoked_at FROM product_keys WHERE verifier_hash = ? AND revoked_at IS NULL LIMIT 1',
       )
-      .bind(verifier)
+      .bind(verifier, verifier)
       .first<KeyRecordV1>();
   }
 
@@ -195,14 +249,18 @@ export class D1ControlPlane
       .prepare('UPDATE keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
       .bind(now, keyId)
       .run();
+    await this.db
+      .prepare('UPDATE product_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
+      .bind(now, keyId)
+      .run();
   }
 
   getActiveKeyForEnvironment(appId: string, envId: string): Promise<KeyRecordV1 | null> {
     return this.db
       .prepare(
-        'SELECT id, app_id, environment_id, verifier_hash, created_at, revoked_at FROM keys WHERE app_id = ? AND environment_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1',
+        'SELECT id, app_id, environment_id, verifier_hash, created_at, revoked_at FROM keys WHERE app_id = ? AND environment_id = ? AND revoked_at IS NULL UNION ALL SELECT id, app_id, NULL AS environment_id, verifier_hash, created_at, revoked_at FROM product_keys WHERE app_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1',
       )
-      .bind(appId, envId)
+      .bind(appId, envId, appId)
       .first<KeyRecordV1>();
   }
 
@@ -218,7 +276,7 @@ export class D1ControlPlane
   async getStatus(appId: string, envId: string, now: number): Promise<InstallationStatusV1> {
     const row = await this.db
       .prepare(
-        'SELECT i.runtime, i.first_seen, i.last_seen, EXISTS(SELECT 1 FROM keys k WHERE k.app_id = i.app_id AND k.environment_id = i.environment_id AND k.revoked_at IS NULL) AS has_active_key FROM installation_status i WHERE i.app_id = ? AND i.environment_id = ?',
+        'SELECT i.runtime, i.first_seen, i.last_seen, (EXISTS(SELECT 1 FROM keys k WHERE k.app_id = i.app_id AND k.environment_id = i.environment_id AND k.revoked_at IS NULL) OR EXISTS(SELECT 1 FROM product_keys p WHERE p.app_id = i.app_id AND p.revoked_at IS NULL)) AS has_active_key FROM installation_status i WHERE i.app_id = ? AND i.environment_id = ?',
       )
       .bind(appId, envId)
       .first<{

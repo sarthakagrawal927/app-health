@@ -39,6 +39,7 @@ import type {
   InstallationRepository,
   KeyRepository,
 } from './repository.js';
+import { MAX_ENVIRONMENTS_PER_APP } from './repository.js';
 
 /** Bounded deduplication window for event IDs. */
 export const DEDUPE_WINDOW_MS = 60 * 60 * 1000;
@@ -203,6 +204,18 @@ export class InMemoryAdapter
     return env;
   }
 
+  async resolveEnvironment(
+    appId: string,
+    name: string,
+    now: number,
+  ): Promise<EnvironmentV1 | null> {
+    const environments = await this.listEnvironments(appId);
+    const existing = environments.find((environment) => environment.name === name);
+    if (existing) return existing;
+    if (environments.length >= MAX_ENVIRONMENTS_PER_APP) return null;
+    return this.createEnvironment(appId, name, now);
+  }
+
   async getEnvironment(envId: string): Promise<EnvironmentV1 | null> {
     return this.environments.get(envId) ?? null;
   }
@@ -214,6 +227,28 @@ export class InMemoryAdapter
   }
 
   // --- KeyRepository ---
+
+  async createProductKey(
+    appId: string,
+    now: number,
+  ): Promise<{
+    record: KeyRecordV1;
+    rawKey: string;
+  }> {
+    const rawKey = generateRawKey();
+    const verifier = await hashKey(rawKey);
+    const record: KeyRecordV1 = {
+      id: newId('key'),
+      app_id: appId,
+      environment_id: null,
+      verifier_hash: verifier,
+      created_at: now,
+      revoked_at: null,
+    };
+    this.keysById.set(record.id, record);
+    this.keysByVerifier.set(verifier, record);
+    return { record: { ...record }, rawKey };
+  }
 
   async createKey(
     appId: string,
@@ -252,12 +287,16 @@ export class InMemoryAdapter
   }
 
   async getActiveKeyForEnvironment(appId: string, envId: string): Promise<KeyRecordV1 | null> {
+    let productKey: KeyRecordV1 | null = null;
     for (const key of this.keysById.values()) {
       if (key.app_id === appId && key.environment_id === envId && key.revoked_at === null) {
         return { ...key };
       }
+      if (key.app_id === appId && key.environment_id === null && key.revoked_at === null) {
+        productKey = { ...key };
+      }
     }
-    return null;
+    return productKey;
   }
 
   // --- InstallationRepository ---
@@ -288,7 +327,11 @@ export class InMemoryAdapter
     if (!envKey) {
       // If a key exists but is revoked, report revoked.
       for (const k of this.keysById.values()) {
-        if (k.app_id === appId && k.environment_id === envId && k.revoked_at !== null) {
+        if (
+          k.app_id === appId &&
+          (k.environment_id === envId || k.environment_id === null) &&
+          k.revoked_at !== null
+        ) {
           revoked = true;
           break;
         }
