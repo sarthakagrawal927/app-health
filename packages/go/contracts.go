@@ -23,6 +23,7 @@ const (
 	MaxMethodLength    = 16
 	MaxRouteLength     = 256
 	MaxReleaseLength   = 128
+	MaxEnvironmentLength = 64
 	MaxDurationMs      = 600_000
 	MaxClockSkewMs     = 5 * 60 * 1000
 	MinStatusCode      = 100
@@ -94,6 +95,7 @@ type EventBatchV1 struct {
 	BatchID       string    `json:"batch_id"`
 	SchemaVersion string    `json:"schema_version"`
 	Runtime       Runtime   `json:"runtime"`
+	Environment   string    `json:"environment,omitempty"`
 	Release       *string   `json:"release,omitempty"`
 	Events        []EventV1 `json:"events"`
 }
@@ -128,7 +130,7 @@ type EnvironmentV1 struct {
 type KeyRecordV1 struct {
 	ID            string `json:"id"`
 	AppID         string `json:"app_id"`
-	EnvironmentID string `json:"environment_id"`
+	EnvironmentID *string `json:"environment_id"`
 	VerifierHash  string `json:"verifier_hash"`
 	CreatedAt     int64  `json:"created_at"`
 	RevokedAt     *int64 `json:"revoked_at"`
@@ -137,7 +139,7 @@ type KeyRecordV1 struct {
 type KeyDisplayV1 struct {
 	Key           string `json:"key"`
 	AppID         string `json:"app_id"`
-	EnvironmentID string `json:"environment_id"`
+	EnvironmentID *string `json:"environment_id"`
 	CreatedAt     int64  `json:"created_at"`
 }
 
@@ -180,6 +182,7 @@ type EndpointQueryResponseV1 struct {
 var (
 	uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	methodPattern = regexp.MustCompile(`^[A-Z]+$`)
+	environmentPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
 // ValidateEvent validates a single EventV1 against V0 bounds.
@@ -222,6 +225,12 @@ func ValidateBatch(b EventBatchV1) (EventBatchV1, error) {
 	}
 	if b.Runtime != RuntimeNode && b.Runtime != RuntimeGo {
 		return b, fmt.Errorf("runtime: must be %q or %q", RuntimeNode, RuntimeGo)
+	}
+	if b.Environment != "" {
+		b.Environment = strings.ToLower(strings.TrimSpace(b.Environment))
+		if len(b.Environment) > MaxEnvironmentLength || !environmentPattern.MatchString(b.Environment) {
+			return b, fmt.Errorf("environment: must be a lower-case slug up to %d chars", MaxEnvironmentLength)
+		}
 	}
 	if b.Release != nil {
 		r := strings.TrimSpace(*b.Release)

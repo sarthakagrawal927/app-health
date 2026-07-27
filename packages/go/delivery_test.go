@@ -227,6 +227,7 @@ func TestDelivery_AuthAndSchema(t *testing.T) {
 	c := New(Config{
 		IngestURL:     srv.URL,
 		IngestKey:     "secret-key-123",
+		Environment:   "local",
 		QueueSize:     16,
 		BatchSize:     4,
 		FlushInterval: 20 * time.Millisecond,
@@ -253,6 +254,9 @@ func TestDelivery_AuthAndSchema(t *testing.T) {
 	}
 	if batch.Runtime != RuntimeGo {
 		t.Fatalf("expected runtime %q, got %q", RuntimeGo, batch.Runtime)
+	}
+	if batch.Environment != "local" {
+		t.Fatalf("expected environment %q, got %q", "local", batch.Environment)
 	}
 	ctx, cancel := contextWithTimeout(2 * time.Second)
 	defer cancel()

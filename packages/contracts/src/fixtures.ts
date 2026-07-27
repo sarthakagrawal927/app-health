@@ -51,6 +51,7 @@ export function buildCanonicalBatch(
     batch_id: uuid(seedBase - 1),
     schema_version: 'v1',
     runtime,
+    environment: 'staging',
     release,
     events: CANONICAL_ENDPOINT_SUMMARIES.map((summary, index) => ({
       event_id: uuid(seedBase + index * 10),

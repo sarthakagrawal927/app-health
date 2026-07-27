@@ -57,10 +57,18 @@ class ProductionStatement implements D1PreparedStatement {
       return {
         id: 'key-1',
         app_id: 'app-1',
-        environment_id: 'env-1',
+        environment_id: null,
         verifier_hash: String(this.values[0]),
         created_at: 1,
         revoked_at: null,
+      } as T;
+    }
+    if (this.sql.includes('FROM environments WHERE app_id = ? AND name = ?')) {
+      return {
+        id: `env-${String(this.values[1])}`,
+        app_id: 'app-1',
+        name: String(this.values[1]),
+        created_at: 1,
       } as T;
     }
     return null;
@@ -110,7 +118,13 @@ function otlpJson(now = Date.now()): string {
     resourceSpans: [
       {
         resource: {
-          attributes: [{ key: 'service.version', value: { stringValue: 'release-otel' } }],
+          attributes: [
+            { key: 'service.version', value: { stringValue: 'release-otel' } },
+            {
+              key: 'deployment.environment.name',
+              value: { stringValue: 'production' },
+            },
+          ],
         },
         scopeSpans: [
           {
@@ -444,12 +458,13 @@ describe('worker local mode', () => {
     const body = (await res.json()) as {
       app: { id: string; name: string };
       environment: { id: string; name: string };
-      key: { key: string };
+      key: { key: string; environment_id: null };
     };
     expect(body.app.id).not.toBe(SEED_APP_ID);
     expect(body.environment.id).not.toBe(SEED_ENV_ID);
     expect(body.key.key.startsWith('ahk_')).toBe(true);
     expect(body.key.key).not.toBe(SEED_KEY);
+    expect(body.key.environment_id).toBeNull();
   });
 
   it('creates a new app with a fresh one-time key for non-seed names', async () => {
@@ -461,7 +476,7 @@ describe('worker local mode', () => {
     const body = (await res.json()) as {
       app: { id: string; name: string };
       environment: { id: string; name: string; app_id: string };
-      key: { key: string };
+      key: { key: string; environment_id: null };
     };
     expect(body.app.id).not.toBe(SEED_APP_ID);
     expect(body.app.name).toBe('api-service');
@@ -469,6 +484,7 @@ describe('worker local mode', () => {
     expect(body.environment.app_id).toBe(body.app.id);
     expect(body.key.key.startsWith('ahk_')).toBe(true);
     expect(body.key.key).not.toBe(SEED_KEY);
+    expect(body.key.environment_id).toBeNull();
   });
 
   it('deduplicates OTLP retries and reports an OTel sampled installation', async () => {

@@ -311,11 +311,11 @@ function KeySetup({
   const [runtime, setRuntime] = useState<'express' | 'hono' | 'pages' | 'echo' | 'otel'>('express');
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
-  const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
-  const honoSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { honoMiddleware } from '@saas-maker/app-health/hono';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\napp.use('*', honoMiddleware({ client: appHealth }));`;
-  const pagesSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { withPagesFunctionHealth } from '@saas-maker/app-health/pages';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\nexport const onRequestGet = withPagesFunctionHealth(\n  { client: appHealth, route: '/users/:id' },\n  async () => Response.json({ ok: true }),\n);`;
+  const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
+  const honoSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { honoMiddleware } from '@saas-maker/app-health/hono';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\napp.use('*', honoMiddleware({ client: appHealth }));`;
+  const pagesSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { withPagesFunctionHealth } from '@saas-maker/app-health/pages';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\nexport const onRequestGet = withPagesFunctionHealth(\n  { client: appHealth, route: '/users/:id' },\n  async () => Response.json({ ok: true }),\n);`;
   const echoSnippet = `go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0\n\nimport apphealthechov5 "github.com/sarthakagrawal927/app-health/packages/go/echo/v5"\n\ncleanup := apphealthechov5.Install(e, apphealthechov5.Config{\n  Enabled: true,\n  Environment: ${JSON.stringify(created.environment.name)},\n  Key: ${JSON.stringify(key)},\n  Project: ${JSON.stringify(created.app.name)},\n})\ndefer cleanup()`;
-  const otelSnippet = `exporters:\n  otlphttp/app_health:\n    traces_endpoint: '${INGEST_ORIGIN}/v1/traces'\n    headers:\n      Authorization: 'Bearer ${key}'\n\nservice:\n  pipelines:\n    traces:\n      # Keep your current receivers and processors.\n      exporters: [your_existing_exporter, otlphttp/app_health]`;
+  const otelSnippet = `processors:\n  resource/app_health:\n    attributes:\n      - key: deployment.environment.name\n        value: ${JSON.stringify(created.environment.name)}\n        action: upsert\n\nexporters:\n  otlphttp/app_health:\n    traces_endpoint: '${INGEST_ORIGIN}/v1/traces'\n    headers:\n      Authorization: 'Bearer ${key}'\n\nservice:\n  pipelines:\n    traces:\n      # Keep your current receivers and processors.\n      processors: [your_existing_processors, resource/app_health]\n      exporters: [your_existing_exporter, otlphttp/app_health]`;
   const snippet = {
     express: expressSnippet,
     hono: honoSnippet,
@@ -851,12 +851,16 @@ function DataReceived({
 
 function Dashboard({
   project,
+  projects,
   ownerToken,
+  onProjectChange,
   onReset,
   onLock,
 }: {
   project: SavedProject;
+  projects: SavedProject[];
   ownerToken: string;
+  onProjectChange: (project: SavedProject) => void;
   onReset: () => void;
   onLock: () => void;
 }): JSX.Element {
@@ -925,6 +929,8 @@ function Dashboard({
     }
   }
 
+  const environments = projects.filter((candidate) => candidate.appId === project.appId);
+
   return (
     <div className="product-shell">
       <header className="topbar">
@@ -940,7 +946,22 @@ function Dashboard({
           <span className="project-avatar">{project.name.slice(0, 1).toUpperCase()}</span>
           <div>
             <strong>{project.name}</strong>
-            <span>{project.environment}</span>
+            <select
+              aria-label="Environment"
+              onChange={(event) => {
+                const selected = environments.find(
+                  (candidate) => candidate.environmentId === event.target.value,
+                );
+                if (selected) onProjectChange(selected);
+              }}
+              value={project.environmentId}
+            >
+              {environments.map((candidate) => (
+                <option key={candidate.environmentId} value={candidate.environmentId}>
+                  {candidate.environment}
+                </option>
+              ))}
+            </select>
           </div>
           <button className="project-reset" aria-label="Forget local project" onClick={onReset}>
             Reset
@@ -1162,29 +1183,45 @@ export function App(): JSX.Element {
     return readProject();
   });
   const [created, setCreated] = useState<CreateAppResponseV1 | null>(null);
+  const [projects, setProjects] = useState<SavedProject[]>([]);
 
   useEffect(() => {
-    if (project || import.meta.env.DEV || ownerToken === null) return;
+    if (ownerToken === null || (import.meta.env.DEV && !project)) return;
+    const token = ownerToken;
     let cancelled = false;
-    void ownerFetch('/v1/apps', ownerToken)
-      .then(async (response) => {
+    async function load(): Promise<void> {
+      try {
+        const response = await ownerFetch('/v1/apps', token);
         if (!response.ok) return;
         const listed = (await response.json()) as ListAppsResponseV1;
-        const first = listed.apps.find((entry) => entry.environments.length > 0);
-        if (!first || cancelled) return;
-        const environment = first.environments[0];
-        setProject({
-          appId: first.app.id,
-          environmentId: environment.id,
-          name: first.app.name,
-          environment: environment.name,
-        });
-      })
-      .catch(() => undefined);
+        const available = listed.apps.flatMap((entry) =>
+          entry.environments.map((environment) => ({
+            appId: entry.app.id,
+            environmentId: environment.id,
+            name: entry.app.name,
+            environment: environment.name,
+          })),
+        );
+        if (cancelled) return;
+        setProjects(available);
+        if (!project && available[0]) selectProject(available[0]);
+      } catch {
+        // App-list refresh is best effort; dashboard queries report their own failures.
+      }
+    }
+    void load();
+    const timer = window.setInterval(() => void load(), 10_000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [ownerToken, project]);
+  }, [ownerToken, project?.appId]);
+
+  function selectProject(value: SavedProject): void {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+    setProject(value);
+    setCreated(null);
+  }
 
   function handleCreated(value: CreateAppResponseV1): void {
     const saved = {
@@ -1193,8 +1230,11 @@ export function App(): JSX.Element {
       name: value.app.name,
       environment: value.environment.name,
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-    setProject(saved);
+    setProjects((available) => [
+      ...available.filter((candidate) => candidate.environmentId !== saved.environmentId),
+      saved,
+    ]);
+    selectProject(saved);
     setCreated(value);
   }
 
@@ -1212,5 +1252,18 @@ export function App(): JSX.Element {
   if (ownerToken === null) return <OwnerUnlock onUnlock={setOwnerToken} />;
   if (created) return <KeySetup created={created} onDone={() => setCreated(null)} />;
   if (!project) return <Setup ownerToken={ownerToken} onCreated={handleCreated} />;
-  return <Dashboard project={project} ownerToken={ownerToken} onReset={reset} onLock={lock} />;
+  return (
+    <Dashboard
+      project={project}
+      projects={
+        projects.some((candidate) => candidate.environmentId === project.environmentId)
+          ? projects
+          : [project, ...projects]
+      }
+      ownerToken={ownerToken}
+      onProjectChange={selectProject}
+      onReset={reset}
+      onLock={lock}
+    />
+  );
 }

@@ -30,6 +30,12 @@ function binaryTrace(): Uint8Array {
           anyValue.tag(1, WireType.LengthDelimited).string('2026.07.22');
         });
       });
+      nested(resource, 1, (keyValue) => {
+        keyValue.tag(1, WireType.LengthDelimited).string('deployment.environment.name');
+        nested(keyValue, 2, (anyValue) => {
+          anyValue.tag(1, WireType.LengthDelimited).string('staging');
+        });
+      });
     });
     nested(resourceSpans, 2, (scopeSpans) => {
       nested(scopeSpans, 2, (span) => {
@@ -70,7 +76,13 @@ function jsonTrace(overrides: Record<string, unknown> = {}): Uint8Array {
       resourceSpans: [
         {
           resource: {
-            attributes: [{ key: 'service.version', value: { stringValue: 'release-1' } }],
+            attributes: [
+              { key: 'service.version', value: { stringValue: 'release-1' } },
+              {
+                key: 'deployment.environment.name',
+                value: { stringValue: 'local' },
+              },
+            ],
           },
           scopeSpans: [{ spans: [span] }],
         },
@@ -91,6 +103,7 @@ describe('OTLP trace projection', () => {
       duration_ms: 125,
       timestamp: 1_725_000_000_000,
       release: '2026.07.22',
+      environment: 'staging',
       upstream_sampled: true,
     });
     const serialized = JSON.stringify(projection.events[0]);
@@ -105,6 +118,7 @@ describe('OTLP trace projection', () => {
       status_code: 201,
       duration_ms: 50,
       release: 'release-1',
+      environment: 'local',
       upstream_sampled: true,
     });
   });
@@ -145,6 +159,21 @@ describe('OTLP trace projection', () => {
     const first = await projectOtlpTraces(binaryTrace(), 'protobuf');
     const second = await projectOtlpTraces(binaryTrace(), 'protobuf');
     expect(first.events[0].event_id).toBe(second.events[0].event_id);
+  });
+
+  it('rejects an invalid deployment environment without retaining it', async () => {
+    const payload = JSON.parse(new TextDecoder().decode(jsonTrace())) as {
+      resourceSpans: { resource: { attributes: Record<string, unknown>[] } }[];
+    };
+    payload.resourceSpans[0].resource.attributes[1] = {
+      key: 'deployment.environment.name',
+      value: { stringValue: '../production' },
+    };
+    const projection = await projectOtlpTraces(
+      new TextEncoder().encode(JSON.stringify(payload)),
+      'json',
+    );
+    expect(projection).toMatchObject({ events: [], rejectedSpans: 1 });
   });
 
   it('caps projected work at the endpoint batch limit', async () => {

@@ -29,6 +29,7 @@ export interface EventBatchV1 {
   batch_id: string;
   schema_version: SchemaVersion;
   runtime: RuntimeField;
+  environment?: string;
   release?: string;
   events: EventV1[];
 }

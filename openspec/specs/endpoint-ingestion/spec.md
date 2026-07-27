@@ -5,10 +5,11 @@
 Define authenticated, aggregate-only endpoint telemetry ingestion and bounded performance queries.
 ## Requirements
 ### Requirement: Versioned authenticated batches
-Ingest SHALL verify the environment-scoped key against its D1 SHA-256 verifier,
-validate the schema version and bounded event fields, enforce a bounded request
-body before JSON parsing, reject unknown unsafe content, and accept valid Node,
-Cloudflare Worker, and Go batches under the same contract.
+Ingest SHALL verify the product-scoped or legacy environment-scoped key against
+its D1 SHA-256 verifier, validate the schema version, bounded environment label,
+and bounded event fields, enforce a bounded request body before JSON parsing,
+reject unknown unsafe content, and accept valid Node, Cloudflare Worker, and Go
+batches under the same contract.
 
 #### Scenario: Valid mixed-runtime contract fixtures
 - **WHEN** canonical Node, Cloudflare Worker, and Go fixtures carry equivalent endpoint summaries
@@ -43,11 +44,19 @@ The query layer SHALL use fixed allowlisted Analytics Engine SQL, weight sampled
 - **THEN** the selected-window percentile is derived from weighted merged histogram counts rather than averaged row percentiles
 
 ### Requirement: Project and environment isolation
-Ingest and endpoint queries SHALL scope every operation to the key-resolved or owner-resolved app and environment, using an opaque scope identifier as the Analytics Engine sampling index.
+Ingest SHALL resolve the app from the authenticated key before resolving a client-selected environment beneath that app. Ingest and endpoint queries SHALL scope inventory, aggregates, failures, deduplication, and installation state to the resulting app and environment, using an opaque scope identifier as the Analytics Engine sampling index.
 
 #### Scenario: Endpoint data belongs to another environment
 - **WHEN** an owner queries one app and environment
 - **THEN** the API returns no metrics from another app or environment
+
+#### Scenario: Product key creates a valid environment
+- **WHEN** a valid product key first sends a batch for a valid bounded environment
+- **THEN** ingest creates or reuses that environment beneath the authenticated app and writes only within its scope
+
+#### Scenario: Legacy key declares a conflicting environment
+- **WHEN** an environment-scoped key sends a batch naming another environment
+- **THEN** ingest rejects the batch and writes no telemetry
 
 ### Requirement: Analytics Engine writes remain bounded
 The Worker SHALL emit no more than 250 Analytics Engine data points in one invocation and SHALL reject or aggregate input so the platform limit cannot be exceeded.

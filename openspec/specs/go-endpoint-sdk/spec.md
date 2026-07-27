@@ -34,6 +34,13 @@ The Go SDK SHALL use a bounded queue, short delivery timeout, bounded retries, e
 - **WHEN** more summaries arrive than the configured queue can hold
 - **THEN** the SDK drops telemetry without changing handler responses or blocking indefinitely
 
+### Requirement: Explicit Go environment
+The Go SDK SHALL accept a bounded environment in client configuration and SHALL include it once at the batch level so a product-scoped key can route telemetry without collecting additional request fields.
+
+#### Scenario: Go client sends local telemetry
+- **WHEN** a Go client is configured with environment `local`
+- **THEN** each emitted batch declares `local` while its request event schema remains unchanged
+
 ### Requirement: Third-party router naming escape hatch
 The Go SDK SHALL accept an optional route resolver for generic `net/http` middleware, SHALL drop events when no trusted framework pattern is available, and SHALL provide a dedicated Echo adapter when Echo is used.
 

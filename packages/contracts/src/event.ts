@@ -15,6 +15,7 @@ import {
   RUNTIMES,
   SCHEMA_VERSION,
 } from './constants.js';
+import { EnvironmentName } from './setup.js';
 
 const uuidV4 = z
   .string()
@@ -70,6 +71,7 @@ export const EventBatchV1 = z
     batch_id: uuidV4.optional(),
     schema_version: z.literal(SCHEMA_VERSION),
     runtime: RuntimeField,
+    environment: EnvironmentName.optional(),
     release: release,
     events: z.array(EventV1).min(1).max(MAX_BATCH_EVENTS),
   })

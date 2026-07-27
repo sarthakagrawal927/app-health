@@ -91,6 +91,7 @@ import { expressMiddleware } from '@saas-maker/app-health/express';
 
 const appHealth = createAppHealthClient({
   key: process.env.APP_HEALTH_INGEST_KEY!,
+  environment: process.env.APP_ENV ?? 'production',
   endpoint: 'https://ingest.sassmaker.com/v1/ingest',
   release: process.env.APP_VERSION,
 });
@@ -148,6 +149,13 @@ need an App Health SDK. Add the standard OTLP/HTTP exporter below alongside the
 exporters already present in the traces pipeline:
 
 ```yaml
+processors:
+  resource/app_health:
+    attributes:
+      - key: deployment.environment.name
+        value: ${env:APP_ENV}
+        action: upsert
+
 exporters:
   otlphttp/app_health:
     traces_endpoint: https://ingest.sassmaker.com/v1/traces
@@ -158,6 +166,7 @@ service:
   pipelines:
     traces:
       # Keep the pipeline's existing receivers, processors, and exporters.
+      processors: [your_existing_processors, resource/app_health]
       exporters: [your_existing_exporter, otlphttp/app_health]
 ```
 
@@ -293,7 +302,7 @@ character set; unsafe free-form values are omitted.
 
 - `health.sassmaker.com` is the private owner-key-protected dashboard and owner API.
 - `ingest.sassmaker.com/v1/ingest` and `/v1/traces` accept only
-  environment-scoped bearer keys.
+  product-scoped bearer keys with an explicit client environment.
 - D1 stores control-plane records, bounded event-ID deduplication, and only the
   normalized endpoint identity plus first/last seen; Analytics Engine stores
   approved aggregate endpoint dimensions and counts.

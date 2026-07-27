@@ -1,6 +1,6 @@
 import { BinaryReader, BinaryWriter, WireType } from '@bufbuild/protobuf/wire';
-import { EventV1, MAX_BATCH_EVENTS, MAX_DURATION_MS } from '@app-health/contracts';
-import type { EndpointEvent } from './service.js';
+import { EnvironmentName, EventV1, MAX_BATCH_EVENTS, MAX_DURATION_MS } from '@app-health/contracts';
+import type { OtlpEndpointEvent } from './service.js';
 
 const SPAN_KIND_SERVER = 2;
 const SAFE_RELEASE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/;
@@ -17,7 +17,7 @@ interface RawSpan {
 }
 
 export interface OtlpProjection {
-  events: EndpointEvent[];
+  events: OtlpEndpointEvent[];
   ignoredSpans: number;
   rejectedSpans: number;
 }
@@ -60,7 +60,7 @@ export async function projectOtlpTraces(
   try {
     const resources =
       contentType === 'protobuf' ? parseBinaryRequest(bytes) : parseJsonRequest(bytes);
-    const events: EndpointEvent[] = [];
+    const events: OtlpEndpointEvent[] = [];
     let ignoredSpans = 0;
     let rejectedSpans = 0;
 
@@ -74,7 +74,7 @@ export async function projectOtlpTraces(
           rejectedSpans += 1;
           continue;
         }
-        const event = await projectSpan(span, resource.release);
+        const event = await projectSpan(span, resource.release, resource.environment);
         if (event) events.push(event);
         else rejectedSpans += 1;
       }
@@ -86,7 +86,11 @@ export async function projectOtlpTraces(
   }
 }
 
-async function projectSpan(span: RawSpan, resourceRelease?: string): Promise<EndpointEvent | null> {
+async function projectSpan(
+  span: RawSpan,
+  resourceRelease?: string,
+  resourceEnvironment?: string,
+): Promise<OtlpEndpointEvent | null> {
   if (span.traceId.byteLength !== 16 || span.spanId.byteLength !== 8) return null;
   if (span.endNanos < span.startNanos) return null;
   const durationNanos = span.endNanos - span.startNanos;
@@ -100,6 +104,9 @@ async function projectSpan(span: RawSpan, resourceRelease?: string): Promise<End
 
   const release =
     resourceRelease && SAFE_RELEASE.test(resourceRelease) ? resourceRelease : undefined;
+  const parsedEnvironment =
+    resourceEnvironment === undefined ? undefined : EnvironmentName.safeParse(resourceEnvironment);
+  if (parsedEnvironment !== undefined && !parsedEnvironment.success) return null;
   const parsed = EventV1.safeParse({
     event_id: await deterministicEventId(span.traceId, span.spanId),
     timestamp: Number(span.endNanos / 1_000_000n),
@@ -110,7 +117,11 @@ async function projectSpan(span: RawSpan, resourceRelease?: string): Promise<End
     ...(release ? { release } : {}),
   });
   if (!parsed.success || /[?#\s]/.test(parsed.data.route)) return null;
-  return { ...parsed.data, upstream_sampled: true };
+  return {
+    ...parsed.data,
+    upstream_sampled: true,
+    ...(parsedEnvironment?.success ? { environment: parsedEnvironment.data } : {}),
+  };
 }
 
 function attributeString(
@@ -150,6 +161,7 @@ async function deterministicEventId(traceId: Uint8Array, spanId: Uint8Array): Pr
 
 interface ResourceSpans {
   release?: string;
+  environment?: string;
   spans: RawSpan[];
 }
 
@@ -169,24 +181,25 @@ function parseBinaryRequest(bytes: Uint8Array): ResourceSpans[] {
 
 function parseBinaryResourceSpans(bytes: Uint8Array): ResourceSpans {
   const reader = new BinaryReader(bytes);
-  let release: string | undefined;
+  let metadata: Pick<ResourceSpans, 'release' | 'environment'> = {};
   const scopePayloads: Uint8Array[] = [];
   while (reader.pos < reader.len) {
     const [field, wire] = reader.tag();
     if (field === 1 && wire === WireType.LengthDelimited) {
-      release = parseBinaryResource(reader.bytes());
+      metadata = parseBinaryResource(reader.bytes());
     } else if (field === 2 && wire === WireType.LengthDelimited) {
       scopePayloads.push(reader.bytes());
     } else {
       reader.skip(wire, field);
     }
   }
-  return { release, spans: scopePayloads.flatMap(parseBinaryScopeSpans) };
+  return { ...metadata, spans: scopePayloads.flatMap(parseBinaryScopeSpans) };
 }
 
-function parseBinaryResource(bytes: Uint8Array): string | undefined {
+function parseBinaryResource(bytes: Uint8Array): Pick<ResourceSpans, 'release' | 'environment'> {
   const reader = new BinaryReader(bytes);
   let release: string | undefined;
+  let environment: string | undefined;
   while (reader.pos < reader.len) {
     const [field, wire] = reader.tag();
     if (field === 1 && wire === WireType.LengthDelimited) {
@@ -194,11 +207,14 @@ function parseBinaryResource(bytes: Uint8Array): string | undefined {
       if (attribute?.[0] === 'service.version' && typeof attribute[1] === 'string') {
         release = attribute[1];
       }
+      if (attribute?.[0] === 'deployment.environment.name' && typeof attribute[1] === 'string') {
+        environment = attribute[1];
+      }
     } else {
       reader.skip(wire, field);
     }
   }
-  return release;
+  return { release, environment };
 }
 
 function parseBinaryScopeSpans(bytes: Uint8Array): RawSpan[] {
@@ -290,12 +306,14 @@ function parseJsonRequest(bytes: Uint8Array): ResourceSpans[] {
     const resourceAttributes = parseJsonAttributes(resource?.attributes);
     const releaseValue = resourceAttributes.get('service.version');
     const release = typeof releaseValue === 'string' ? releaseValue : undefined;
+    const environmentValue = resourceAttributes.get('deployment.environment.name');
+    const environment = typeof environmentValue === 'string' ? environmentValue : undefined;
     const scopes = array(resourceSpans?.scopeSpans ?? resourceSpans?.scope_spans);
     const spans = scopes.flatMap((scope) => {
       const scopeRecord = record(scope);
       return array(scopeRecord?.spans).map(parseJsonSpan);
     });
-    return { release, spans };
+    return { release, environment, spans };
   });
 }
 

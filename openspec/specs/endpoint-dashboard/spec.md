@@ -15,6 +15,13 @@ The private dashboard SHALL list every method and normalized route accepted for 
 - **WHEN** the D1 inventory contains an accepted endpoint whose metric row is absent from the selected Analytics Engine response
 - **THEN** the endpoint remains visible with its last-seen time and an explicit metrics-sampled state instead of false zero metrics
 
+### Requirement: Product environment selection
+The private dashboard SHALL present the durable environments belonging to the selected product in one accessible selector and SHALL refresh installation state, endpoint inventory and metrics, and retained failures when the operator changes environment.
+
+#### Scenario: Operator switches environments
+- **WHEN** the operator switches the selected product environment from `local` to `staging`
+- **THEN** every dashboard query uses the staging environment identifier while the selected product remains unchanged
+
 ### Requirement: Endpoint performance metrics
 Each endpoint row SHALL show sampling-aware request count, error rate, approximate p50 latency, approximate p95 latency, last seen, and deterministic health state for the selected time window when metrics are available. Missing sampled metrics SHALL be rendered as unavailable rather than zero.
 
@@ -46,7 +53,7 @@ The dashboard SHALL distinguish no traffic yet, stale traffic, invalid or revoke
 ### Requirement: Production SDK snippets use the ingest origin
 The setup view SHALL render copy-ready Express, Hono Worker, Pages Function, and
 Echo installation snippets with their public package paths, the configured
-production ingest origin, and the one-time key without persisting the raw key
+production ingest origin, explicit environment, and the one-time product key without persisting the raw key
 in browser storage or analytics.
 
 #### Scenario: Operator creates a production app

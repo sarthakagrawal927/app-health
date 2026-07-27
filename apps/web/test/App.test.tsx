@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App, OwnerUnlock, sortEndpoints } from '../src/App.js';
 import type {
+  AppEnvironmentV1,
   EndpointAggregateV1,
   FailureEventV1,
   InstallationStatusV1,
@@ -63,14 +64,16 @@ function installFetch(options?: {
   status?: InstallationStatusV1;
   endpointRows?: EndpointAggregateV1[];
   failureRows?: FailureEventV1[];
+  apps?: AppEnvironmentV1[];
   failureFail?: boolean;
   fail?: boolean;
 }) {
-  const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+  const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
     if (options?.fail) throw new Error('connection refused');
     const url =
       input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url);
     if (url.pathname === '/v1/apps') {
+      if (init?.method !== 'POST') return Response.json({ apps: options?.apps ?? [] });
       return new Response(
         JSON.stringify({
           app: { id: 'app-new', name: 'orders-api', created_at: Date.now() },
@@ -219,6 +222,69 @@ describe('App Health V0 UI', () => {
     expect(await screen.findByText('OpenTelemetry connected')).toBeTruthy();
     expect(screen.getByText(/OpenTelemetry pipeline/)).toBeTruthy();
     expect(screen.getAllByText('OTel sampled estimate')).toHaveLength(2);
+  });
+
+  it('switches every dashboard query between environments under one product', async () => {
+    const localProject = {
+      appId: 'app-polaris',
+      environmentId: 'env-polaris-local',
+      name: 'polaris',
+      environment: 'local',
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(localProject));
+    const fetchMock = installFetch({
+      apps: [
+        {
+          app: { id: 'app-polaris', name: 'polaris', created_at: Date.now() },
+          environments: [
+            {
+              id: 'env-polaris-local',
+              app_id: 'app-polaris',
+              name: 'local',
+              created_at: Date.now(),
+            },
+            {
+              id: 'env-polaris-staging',
+              app_id: 'app-polaris',
+              name: 'staging',
+              created_at: Date.now(),
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<App />);
+    const environment = await screen.findByRole('combobox', { name: 'Environment' });
+    expect(environment).toHaveValue('env-polaris-local');
+    fireEvent.change(environment, { target: { value: 'env-polaris-staging' } });
+
+    await waitFor(() => {
+      const scopedCalls = fetchMock.mock.calls
+        .map(([input]) => (input instanceof URL ? input : null))
+        .filter(
+          (url): url is URL =>
+            url !== null &&
+            ['/v1/endpoints', '/v1/installation/status'].includes(url.pathname) &&
+            url.searchParams.get('environment_id') === 'env-polaris-staging',
+        );
+      expect(scopedCalls.map((url) => url.pathname).sort()).toEqual([
+        '/v1/endpoints',
+        '/v1/installation/status',
+      ]);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Data received' }));
+    await waitFor(() => {
+      const failureCall = fetchMock.mock.calls
+        .map(([input]) => (input instanceof URL ? input : null))
+        .find(
+          (url) =>
+            url?.pathname === '/v1/failures' &&
+            url.searchParams.get('environment_id') === 'env-polaris-staging',
+        );
+      expect(failureCall).toBeDefined();
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('env-polaris-staging');
   });
 
   it('identifies Cloudflare Worker traffic', async () => {

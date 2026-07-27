@@ -425,9 +425,22 @@ pre {
   display: grid;
   font-size: 12px;
 }
-.project-switcher div span {
+.project-switcher div span,
+.project-switcher select {
   color: var(--muted);
   font-size: 10px;
+}
+.project-switcher select {
+  width: fit-content;
+  min-height: 20px;
+  padding: 0 18px 0 0;
+  border: 0;
+  background-color: transparent;
+  font-weight: 700;
+}
+.project-switcher select:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 .project-switcher button {
   min-height: 44px;
@@ -1426,7 +1439,8 @@ footer {
     max-width: 86px;
   }
   .project-switcher div strong,
-  .project-switcher div span {
+  .project-switcher div span,
+  .project-switcher select {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

@@ -17,6 +17,9 @@ export const MAX_ROUTE_LENGTH = 256;
 /** Maximum length of an optional release tag. */
 export const MAX_RELEASE_LENGTH = 128;
 
+/** Maximum length of a normalized deployment environment label. */
+export const MAX_ENVIRONMENT_LENGTH = 64;
+
 /** Maximum accepted request duration in milliseconds (10 minutes). */
 export const MAX_DURATION_MS = 600_000;
 

@@ -20,6 +20,7 @@ import { expressMiddleware } from '@saas-maker/app-health/express';
 
 const appHealth = createAppHealthClient({
   key: process.env.APP_HEALTH_INGEST_KEY!,
+  environment: process.env.APP_ENV ?? 'production',
   endpoint: 'https://ingest.sassmaker.com/v1/ingest',
   release: process.env.APP_VERSION,
 });
@@ -52,6 +53,7 @@ import { honoMiddleware } from '@saas-maker/app-health/hono';
 
 const appHealth = createAppHealthClient({
   key: env.APP_HEALTH_INGEST_KEY,
+  environment: env.APP_ENV ?? 'production',
   endpoint: 'https://ingest.sassmaker.com/v1/ingest',
   runtime: 'worker',
   disableTimer: true,

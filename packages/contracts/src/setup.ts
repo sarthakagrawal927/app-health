@@ -3,6 +3,17 @@
 // verifier is stored; the raw key is shown to the operator exactly once.
 
 import { z } from 'zod';
+import { MAX_ENVIRONMENT_LENGTH } from './constants.js';
+
+export const EnvironmentName = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(MAX_ENVIRONMENT_LENGTH)
+  .regex(/^[a-z][a-z0-9-]*$/, 'lower-case environment slug');
+
+export type EnvironmentName = z.infer<typeof EnvironmentName>;
 
 export const AppV1 = z.object({
   id: z.string().min(1),
@@ -15,7 +26,7 @@ export type AppV1 = z.infer<typeof AppV1>;
 export const EnvironmentV1 = z.object({
   id: z.string().min(1),
   app_id: z.string().min(1),
-  name: z.string().trim().min(1).max(64),
+  name: EnvironmentName,
   created_at: z.number().int().min(0),
 });
 
@@ -25,7 +36,7 @@ export type EnvironmentV1 = z.infer<typeof EnvironmentV1>;
 export const KeyRecordV1 = z.object({
   id: z.string().min(1),
   app_id: z.string().min(1),
-  environment_id: z.string().min(1),
+  environment_id: z.string().min(1).nullable(),
   verifier_hash: z.string().min(1),
   created_at: z.number().int().min(0),
   revoked_at: z.number().int().min(0).nullable(),
@@ -37,7 +48,7 @@ export type KeyRecordV1 = z.infer<typeof KeyRecordV1>;
 export const KeyDisplayV1 = z.object({
   key: z.string().min(1),
   app_id: z.string().min(1),
-  environment_id: z.string().min(1),
+  environment_id: z.string().min(1).nullable(),
   created_at: z.number().int().min(0),
 });
 
@@ -47,7 +58,7 @@ export type KeyDisplayV1 = z.infer<typeof KeyDisplayV1>;
 export const CreateAppRequestV1 = z
   .object({
     name: z.string().trim().min(1).max(128),
-    environment: z.string().trim().min(1).max(64),
+    environment: EnvironmentName,
   })
   .strict();
 
