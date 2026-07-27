@@ -1,12 +1,17 @@
 // Owner identity for V0. Production uses one high-entropy bearer secret kept
 // in a Worker secret; local development remains credential-free.
 
+import { looksLikeKey } from './crypto.js';
+import type { KeyRepository } from './repository.js';
+
 /** A resolved local owner. The id is opaque and never persisted as user data. */
 export interface OwnerIdentity {
   /** Stable opaque identifier for the local operator. */
   id: string;
   /** Human-readable label for diagnostics only. */
   label: string;
+  /** Product scope resolved from an active product key; absent for global owners. */
+  appId?: string;
 }
 
 /**
@@ -48,7 +53,10 @@ function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {
 export class BearerOwnerIdentityAdapter implements OwnerIdentityAdapter {
   private readonly expectedDigest: Promise<Uint8Array>;
 
-  constructor(secret: string) {
+  constructor(
+    secret: string,
+    private readonly keys?: KeyRepository,
+  ) {
     this.expectedDigest = digest(secret);
   }
 
@@ -59,6 +67,17 @@ export class BearerOwnerIdentityAdapter implements OwnerIdentityAdapter {
         ?.match(/^Bearer\s+(.+)$/i)?.[1]
         ?.trim() ?? '';
     if (!token) return null;
+
+    if (looksLikeKey(token)) {
+      const record = await this.keys?.verifyKey(token);
+      if (!record || record.environment_id !== null) return null;
+      return {
+        id: record.id,
+        label: 'App Health product',
+        appId: record.app_id,
+      };
+    }
+
     const [expected, received] = await Promise.all([this.expectedDigest, digest(token)]);
     if (!constantTimeEqual(expected, received)) return null;
     return { id: 'single-owner', label: 'App Health owner' };

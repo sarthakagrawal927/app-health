@@ -92,7 +92,7 @@ async function resolveAdapter(env: Env): Promise<AdapterBundle | null> {
   return {
     repos,
     service: new AppHealthService(repos),
-    identity: new BearerOwnerIdentityAdapter(env.OWNER_AUTH_TOKEN),
+    identity: new BearerOwnerIdentityAdapter(env.OWNER_AUTH_TOKEN, repos.keys),
     local: false,
   };
 }
@@ -104,6 +104,14 @@ function extractBearerKey(request: Request): string {
       ?.match(/^Bearer\s+(.+)$/i)?.[1]
       ?.trim() ?? ''
   );
+}
+
+function ownerCanAccessApp(owner: { appId?: string }, appId: string): boolean {
+  return owner.appId === undefined || owner.appId === appId;
+}
+
+function productScopeForbidden(): Response {
+  return json(403, { error: 'product scope forbids this operation' }, true);
 }
 
 async function readJsonBounded(request: Request): Promise<unknown> {
@@ -252,8 +260,9 @@ const worker = {
 
     if (url.pathname === '/v1/apps') {
       if (request.method === 'GET')
-        return json(200, ListAppsResponseV1.parse(await service.listApps()), true);
+        return json(200, ListAppsResponseV1.parse(await service.listApps(owner.appId)), true);
       if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+      if (owner.appId) return productScopeForbidden();
       try {
         const parsed = CreateAppRequestV1.safeParse(await readJsonBounded(request));
         if (!parsed.success) return json(400, { error: 'invalid app creation request' }, true);
@@ -268,6 +277,7 @@ const worker = {
     const revokeMatch = url.pathname.match(/^\/v1\/apps\/([^/]+)\/environments\/([^/]+)\/revoke$/);
     if (revokeMatch) {
       if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+      if (owner.appId) return productScopeForbidden();
       const keyRecord = await bundle.repos.keys.getActiveKeyForEnvironment(
         revokeMatch[1],
         revokeMatch[2],
@@ -282,6 +292,7 @@ const worker = {
       const appId = url.searchParams.get('app_id');
       const envId = url.searchParams.get('environment_id');
       if (!appId || !envId) return json(400, { error: 'app_id and environment_id are required' });
+      if (!ownerCanAccessApp(owner, appId)) return productScopeForbidden();
       return json(
         200,
         InstallationStatusV1.parse(await service.installationStatus(appId, envId, Date.now())),
@@ -300,6 +311,7 @@ const worker = {
         sort_dir: url.searchParams.get('sort_dir') ?? 'desc',
       });
       if (!parsed.success) return json(400, { error: 'invalid query' });
+      if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
       return json(
         200,
         await service.queryEndpoints(
@@ -320,6 +332,7 @@ const worker = {
         limit: Number(url.searchParams.get('limit') ?? DEFAULT_FAILURE_QUERY_LIMIT),
       });
       if (!parsed.success) return json(400, { error: 'invalid failure query' }, true);
+      if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
       return json(
         200,
         await service.queryFailures(
