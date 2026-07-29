@@ -93,20 +93,8 @@ asynchronous endpoint summaries, aggregate-only storage, and a
   environment keys remain compatible during migration, and the dashboard
   switches endpoint, installation, and failure views together.
 
-## Todo / Planned / Deferred / Blocked
+## Work queue
 
-1. **Deferred:** the broader owner-first Problem workflow remains outside V0 until endpoint health earns expansion; its superseded planning change is archived rather than presented as active work.
-2. **Distribution:** npm publication remains externally gated because the
-   configured registry identity returns `E401 Unauthorized`. Version `0.2.1`
-   is verified across ESM/CommonJS and all adapter subpaths and uses an
-   immutable public GitHub Release asset as the supported fallback; no npm
-   release is claimed.
-3. **Verification:** the injected-failure D1, owner identity, host-boundary,
-   ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
-   and browser non-persistence matrices are covered locally. The live dashboard
-   is connected and the production endpoint inventory is accepted.
-4. **Free AI pilot:** the exact `0.2.1` release asset and optional Hono
-   middleware are committed on `main`; checks and privacy review pass. Its
-   repository forbids agent-session deploys, so production deployment remains
-   a manual `workflow_dispatch`, and live connection additionally requires an
-   environment-scoped `APP_HEALTH_INGEST_KEY`.
+Open work is tracked only in [GitHub Issues](https://github.com/sarthakagrawal927/app-health/issues).
+An open issue is a to-do, a linked pull request is in progress, and merge plus
+issue closure makes the work done.
