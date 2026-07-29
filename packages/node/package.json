@@ -35,12 +35,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarthakagrawal927/app-health.git",
+    "url": "git+https://github.com/sass-maker/app-health.git",
     "directory": "packages/node"
   },
   "homepage": "https://health.sassmaker.com",
   "bugs": {
-    "url": "https://github.com/sarthakagrawal927/app-health/issues"
+    "url": "https://github.com/sass-maker/app-health/issues"
   },
   "publishConfig": {
     "access": "public"
