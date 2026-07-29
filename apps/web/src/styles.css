@@ -176,6 +176,23 @@ input::placeholder {
   color: var(--green);
   font-weight: 800;
 }
+.public-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 24px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.public-links a,
+.changelog-topbar a {
+  color: var(--muted);
+  text-underline-offset: 4px;
+}
+.public-links a:hover,
+.changelog-topbar a:hover {
+  color: var(--green);
+}
 .unlock-panel {
   padding: 32px;
   border: 1px solid var(--line);
@@ -361,6 +378,109 @@ pre {
 }
 .product-shell {
   min-height: 100vh;
+}
+.changelog-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(22, 115, 74, 0.08), transparent 30rem), #f4f6f3;
+}
+.changelog-topbar {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 clamp(20px, 4vw, 56px);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.88);
+}
+.changelog-topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.changelog-dashboard-link {
+  padding: 9px 13px;
+  border: 1px solid #ccd4ce;
+  border-radius: 8px;
+  background: white;
+  color: var(--ink) !important;
+  text-decoration: none;
+}
+.changelog-main {
+  width: min(860px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(72px, 10vw, 120px) 0 96px;
+}
+.changelog-main h1 {
+  max-width: 720px;
+  margin: 18px 0;
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 600;
+  line-height: 1.03;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+.changelog-lede {
+  max-width: 650px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.7;
+}
+.changelog-list {
+  margin: 64px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+.changelog-list > li {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 32px;
+  padding: 34px 0;
+  border-bottom: 1px solid var(--line);
+}
+.changelog-list time {
+  color: #89918d;
+  font:
+    600 11px ui-monospace,
+    'SFMono-Regular',
+    Consolas,
+    monospace;
+  letter-spacing: 0.07em;
+}
+.changelog-list h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+.changelog-list ul {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  list-style: none;
+}
+.changelog-list ul li {
+  position: relative;
+  padding-left: 18px;
+}
+.changelog-list ul li::before {
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  content: '';
 }
 .topbar {
   height: 68px;
@@ -1428,6 +1548,23 @@ footer {
     gap: 0;
     font-size: 0;
   }
+  .changelog-topbar .brand {
+    gap: 10px;
+    font-size: inherit;
+  }
+  .changelog-topbar {
+    gap: 12px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+  .changelog-topbar nav {
+    gap: 10px;
+    font-size: 11px;
+  }
+  .changelog-list > li {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
   .project-switcher {
     gap: 6px;
   }
@@ -1475,6 +1612,12 @@ footer {
   }
   .key-panel code {
     font-size: 10px;
+  }
+}
+@media (max-width: 360px) {
+  .changelog-topbar .brand {
+    gap: 0;
+    font-size: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

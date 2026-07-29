@@ -204,6 +204,11 @@ export function OwnerUnlock({
           <li>No owner key stored in this browser</li>
           <li>Aggregate route metrics only</li>
         </ul>
+        <nav className="public-links" aria-label="Public product links">
+          <a href="/changelog">Changelog</a>
+          <a href="https://github.com/sass-maker/app-health/issues">Roadmap</a>
+          <a href="https://github.com/sass-maker/app-health">Source</a>
+        </nav>
       </section>
       <section className="unlock-panel" aria-label="Unlock App Health">
         <div className="unlock-status">
