@@ -3,10 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>App Health — V0</title>
+    <title>App Health — Privacy-first endpoint health</title>
+    <meta
+      name="description"
+      content="Monitor endpoint latency, errors, and availability across Node, Go, Cloudflare, and OpenTelemetry services without collecting request content."
+    />
+    <link rel="canonical" href="https://health.sassmaker.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://health.sassmaker.com/" />
+    <meta property="og:title" content="App Health — Privacy-first endpoint health" />
+    <meta
+      property="og:description"
+      content="See observed endpoint health while keeping request bodies, headers, identity, and logs out of the product."
+    />
+    <meta property="og:image" content="https://health.sassmaker.com/og-image.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="App Health — Privacy-first endpoint health" />
+    <meta
+      name="twitter:description"
+      content="Aggregate endpoint latency, errors, and availability without collecting request content."
+    />
+    <meta name="twitter:image" content="https://health.sassmaker.com/og-image.svg" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "App Health",
+        "url": "https://health.sassmaker.com/",
+        "applicationCategory": "DeveloperApplication",
+        "description": "Privacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.",
+        "operatingSystem": "Web"
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main>
+        <h1>Privacy-first endpoint health</h1>
+        <p>
+          App Health shows the latency, error rate, throughput, and availability of observed service
+          endpoints. Its Node, Go, Cloudflare, and OpenTelemetry adapters send normalized route
+          summaries without request bodies, headers, cookies, query values, user identity, logs, or
+          stack traces.
+        </p>
+        <h2>Connect one service, then inspect real endpoints</h2>
+        <p>
+          The owner dashboard separates environments and time windows, keeps successful requests
+          aggregate-only, and exposes only bounded recent failure metadata. Product setup and
+          telemetry remain authenticated; this public description contains no operator data.
+        </p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

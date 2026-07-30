@@ -1,0 +1,14 @@
+# App Health
+
+> Privacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.
+
+## Product
+
+- [Home](https://health.sassmaker.com/): Endpoint health dashboard
+- [Changelog](https://health.sassmaker.com/changelog): Verified product releases
+
+## Machine surfaces
+
+- [Agent catalog](https://health.sassmaker.com/api/ai): JSON inventory of public surfaces
+- [Homepage markdown](https://health.sassmaker.com/index.md): Product brief without JS
+- [This index](https://health.sassmaker.com/llms.txt)

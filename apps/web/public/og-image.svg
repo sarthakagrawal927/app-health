@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">App Health</title>
+  <desc id="description">Privacy-first endpoint health for developers and operators.</desc>
+  <rect width="1200" height="630" fill="#07110f"/>
+  <path d="M88 356h142l58-136 96 264 86-192 58 64h584" fill="none" stroke="#82e6c1" stroke-width="20" stroke-linejoin="round"/>
+  <text x="88" y="150" fill="#f3f7f5" font-family="ui-sans-serif,system-ui,sans-serif" font-size="78" font-weight="750">APP HEALTH</text>
+  <text x="92" y="536" fill="#9fb5ad" font-family="ui-sans-serif,system-ui,sans-serif" font-size="34">Endpoint evidence without request content.</text>
+</svg>

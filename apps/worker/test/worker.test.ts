@@ -45,6 +45,45 @@ function bearer(key: string): Record<string, string> {
   return { authorization: `Bearer ${key}` };
 }
 
+describe('public agent surfaces', () => {
+  it('serves discovery without requiring owner or telemetry bindings', async () => {
+    const llms = await call(
+      'GET',
+      '/llms.txt',
+      NON_LOCAL_ENV,
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect(llms.status).toBe(200);
+    expect(llms.headers.get('content-type')).toContain('text/plain');
+    expect(await llms.text()).toMatch(/^# App Health/);
+
+    const catalog = await call(
+      'GET',
+      '/api/ai',
+      NON_LOCAL_ENV,
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect(catalog.status).toBe(200);
+    expect((await catalog.json()) as { name: string }).toMatchObject({ name: 'App Health' });
+  });
+
+  it('does not expose product discovery on the ingest hostname', async () => {
+    const response = await call(
+      'GET',
+      '/llms.txt',
+      productionEnv(),
+      undefined,
+      undefined,
+      'https://ingest.sassmaker.com',
+    );
+    expect(response.status).toBe(404);
+  });
+});
+
 class ProductionStatement implements D1PreparedStatement {
   values: unknown[] = [];
   constructor(readonly sql: string) {}
