@@ -28,6 +28,9 @@ asynchronous endpoint summaries, aggregate-only storage, and a
 
 ## Timeline
 
+- 2026-07-31 — prepared and locally verified public agent discovery on the
+  dashboard host plus complete search/social metadata; the private ingest host
+  remains excluded and production deployment is still a separate manual step
 - 2026-07-30 — made the repository independently operable by replacing the
   sibling Fleet release guard with repo-local check, build, dry-run, explicit
   production-approval, migration, and SHA-tagged manual deploy contracts

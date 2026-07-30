@@ -23,6 +23,7 @@ import {
 } from './identity.js';
 import { AppHealthService } from './service.js';
 import { InvalidOtlpError, otlpSuccessBody, projectOtlpTraces } from './otlp.js';
+import { handleAgentEdge } from './agent-edge.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_OTLP_BODY_BYTES = 1024 * 1024;
@@ -192,6 +193,10 @@ function hostAllowed(url: URL, bundle: AdapterBundle, env: Env, kind: 'owner' | 
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.hostname !== env.APP_HEALTH_INGEST_HOST) {
+      const agentResponse = handleAgentEdge(request);
+      if (agentResponse) return agentResponse;
+    }
     if (url.pathname === '/v1/health') return json(200, { ok: true });
 
     const bundle = await resolveAdapter(env);
