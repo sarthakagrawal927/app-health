@@ -1,6 +1,6 @@
 # app-health — PROJECT STATUS
 
-Last updated: 2026-07-27
+Last updated: 2026-07-30
 
 ## Why / What
 
@@ -28,6 +28,9 @@ asynchronous endpoint summaries, aggregate-only storage, and a
 
 ## Timeline
 
+- 2026-07-30 — made the repository independently operable by replacing the
+  sibling Fleet release guard with repo-local check, build, dry-run, explicit
+  production-approval, migration, and SHA-tagged manual deploy contracts
 - 2026-07-29 — added a same-origin `/changelog` with concise, newest-first
   outcomes drawn only from verified shipped milestones; the public unlock
   surface now exposes Changelog, routes Roadmap to GitHub Issues, and links

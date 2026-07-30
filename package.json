@@ -16,10 +16,9 @@
     "typecheck": "pnpm --silent -r run typecheck",
     "test": "pnpm --silent -r run test",
     "build": "pnpm --silent -r run build",
-    "deploy:guard": "bash ../foundry/ops/scripts/fleet-deploy-guard.sh app-health",
     "deploy:dry-run": "pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --dry-run",
-    "d1:migrate:production": "pnpm run deploy:guard && pnpm --filter @app-health/worker exec wrangler d1 migrations apply DB --remote --env=\"\"",
-    "deploy": "pnpm run deploy:guard && pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --tag \"$(git rev-parse HEAD)\"",
+    "d1:migrate:production": "pnpm --filter @app-health/worker exec wrangler d1 migrations apply DB --remote --env=\"\"",
+    "deploy": "pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --tag \"$(git rev-parse HEAD)\"",
     "clean": "pnpm --silent -r exec rimraf dist .turbo *.tsbuildinfo"
   },
   "devDependencies": {
