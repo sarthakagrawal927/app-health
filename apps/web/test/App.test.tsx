@@ -107,6 +107,7 @@ function installFetch(options?: {
       if (options?.failureFail) return new Response(null, { status: 503 });
       return Response.json({
         refreshed_at: Date.now(),
+        window: url.searchParams.get('window') ?? '24h',
         retention_hours: 24,
         limit: Number(url.searchParams.get('limit') ?? 50),
         failures: options?.failureRows ?? [],
@@ -281,7 +282,8 @@ describe('App Health V0 UI', () => {
         .find(
           (url) =>
             url?.pathname === '/v1/failures' &&
-            url.searchParams.get('environment_id') === 'env-polaris-staging',
+            url.searchParams.get('environment_id') === 'env-polaris-staging' &&
+            url.searchParams.get('window') === '15m',
         );
       expect(failureCall).toBeDefined();
     });

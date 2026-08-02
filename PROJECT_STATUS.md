@@ -1,6 +1,6 @@
 # app-health — PROJECT STATUS
 
-Last updated: 2026-07-27
+Last updated: 2026-07-30
 
 ## Why / What
 
@@ -28,6 +28,17 @@ asynchronous endpoint summaries, aggregate-only storage, and a
 
 ## Timeline
 
+- 2026-07-31 — prepared and locally verified public agent discovery on the
+  dashboard host plus complete search/social metadata; the private ingest host
+  remains excluded and production deployment is still a separate manual step
+- 2026-07-30 — made the repository independently operable by replacing the
+  sibling Fleet release guard with repo-local check, build, dry-run, explicit
+  production-approval, migration, and SHA-tagged manual deploy contracts
+- 2026-07-29 — added a same-origin `/changelog` with concise, newest-first
+  outcomes drawn only from verified shipped milestones; the public unlock
+  surface now exposes Changelog, routes Roadmap to GitHub Issues, and links
+  Source to the canonical repository, with no ingest, storage, SDK, or
+  deployment behavior changed
 - 2026-07-20 — project scaffolded
 - 2026-07-20 — MVP PRD converted into OpenSpec proposal, capability specs, technical design, and implementation waves
 - 2026-07-20 — broad MVP deferred; endpoint-only Go + Node V0 made the active build target
@@ -93,20 +104,8 @@ asynchronous endpoint summaries, aggregate-only storage, and a
   environment keys remain compatible during migration, and the dashboard
   switches endpoint, installation, and failure views together.
 
-## Todo / Planned / Deferred / Blocked
+## Work queue
 
-1. **Deferred:** the broader owner-first Problem workflow remains outside V0 until endpoint health earns expansion; its superseded planning change is archived rather than presented as active work.
-2. **Distribution:** npm publication remains externally gated because the
-   configured registry identity returns `E401 Unauthorized`. Version `0.2.1`
-   is verified across ESM/CommonJS and all adapter subpaths and uses an
-   immutable public GitHub Release asset as the supported fallback; no npm
-   release is claimed.
-3. **Verification:** the injected-failure D1, owner identity, host-boundary,
-   ingest-without-owner-auth, body-limit, no-store, binding-absence, sampled-route,
-   and browser non-persistence matrices are covered locally. The live dashboard
-   is connected and the production endpoint inventory is accepted.
-4. **Free AI pilot:** the exact `0.2.1` release asset and optional Hono
-   middleware are committed on `main`; checks and privacy review pass. Its
-   repository forbids agent-session deploys, so production deployment remains
-   a manual `workflow_dispatch`, and live connection additionally requires an
-   environment-scoped `APP_HEALTH_INGEST_KEY`.
+Open work is tracked only in [GitHub Issues](https://github.com/sarthakagrawal927/app-health/issues).
+An open issue is a to-do, a linked pull request is in progress, and merge plus
+issue closure makes the work done.

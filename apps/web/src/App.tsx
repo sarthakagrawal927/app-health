@@ -29,6 +29,12 @@ type SortKey = 'health' | 'requests' | 'error_rate' | 'p95' | 'last_seen';
 type SortDirection = 'asc' | 'desc';
 type DashboardView = 'endpoints' | 'data';
 
+const WINDOW_LABELS: Record<Window, string> = {
+  '15m': '15 minutes',
+  '1h': '1 hour',
+  '24h': '24 hours',
+};
+
 interface SavedProject {
   appId: string;
   environmentId: string;
@@ -198,6 +204,11 @@ export function OwnerUnlock({
           <li>No owner key stored in this browser</li>
           <li>Aggregate route metrics only</li>
         </ul>
+        <nav className="public-links" aria-label="Public product links">
+          <a href="/changelog">Changelog</a>
+          <a href="https://github.com/sass-maker/app-health/issues">Roadmap</a>
+          <a href="https://github.com/sass-maker/app-health">Source</a>
+        </nav>
       </section>
       <section className="unlock-panel" aria-label="Unlock App Health">
         <div className="unlock-status">
@@ -342,8 +353,8 @@ function KeySetup({
   const [copied, setCopied] = useState<string | null>(null);
   const key = created.key.key;
   const expressSnippet = `npm install @saas-maker/app-health\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { expressMiddleware } from '@saas-maker/app-health/express';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n});\n\napp.use(expressMiddleware({ client: appHealth }));`;
-  const honoSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { honoMiddleware } from '@saas-maker/app-health/hono';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\napp.use('*', honoMiddleware({ client: appHealth }));`;
-  const pagesSnippet = `npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { withPagesFunctionHealth } from '@saas-maker/app-health/pages';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\nexport const onRequestGet = withPagesFunctionHealth(\n  { client: appHealth, route: '/users/:id' },\n  async () => Response.json({ ok: true }),\n);`;
+  const honoSnippet = `npm install https://github.com/sass-maker/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { honoMiddleware } from '@saas-maker/app-health/hono';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\napp.use('*', honoMiddleware({ client: appHealth }));`;
+  const pagesSnippet = `npm install https://github.com/sass-maker/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz\n\nimport { createAppHealthClient } from '@saas-maker/app-health';\nimport { withPagesFunctionHealth } from '@saas-maker/app-health/pages';\n\nconst appHealth = createAppHealthClient({\n  key: '${key}',\n  environment: ${JSON.stringify(created.environment.name)},\n  endpoint: '${INGEST_ORIGIN}/v1/ingest',\n  runtime: 'worker',\n  disableTimer: true,\n});\n\nexport const onRequestGet = withPagesFunctionHealth(\n  { client: appHealth, route: '/users/:id' },\n  async () => Response.json({ ok: true }),\n);`;
   const echoSnippet = `go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0\n\nimport apphealthechov5 "github.com/sarthakagrawal927/app-health/packages/go/echo/v5"\n\ncleanup := apphealthechov5.Install(e, apphealthechov5.Config{\n  Enabled: true,\n  Environment: ${JSON.stringify(created.environment.name)},\n  Key: ${JSON.stringify(key)},\n  Project: ${JSON.stringify(created.app.name)},\n})\ndefer cleanup()`;
   const otelSnippet = `processors:\n  resource/app_health:\n    attributes:\n      - key: deployment.environment.name\n        value: ${JSON.stringify(created.environment.name)}\n        action: upsert\n\nexporters:\n  otlphttp/app_health:\n    traces_endpoint: '${INGEST_ORIGIN}/v1/traces'\n    headers:\n      Authorization: 'Bearer ${key}'\n\nservice:\n  pipelines:\n    traces:\n      # Keep your current receivers and processors.\n      processors: [your_existing_processors, resource/app_health]\n      exporters: [your_existing_exporter, otlphttp/app_health]`;
   const snippet = {
@@ -682,9 +693,11 @@ function FailureRow({ failure }: { failure: FailureEventV1 }): JSX.Element {
 function DataReceived({
   project,
   ownerToken,
+  windowKey,
 }: {
   project: SavedProject;
   ownerToken: string;
+  windowKey: Window;
 }): JSX.Element {
   const [data, setData] = useState<FailureQueryResponseV1 | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -699,6 +712,7 @@ function DataReceived({
         const url = apiUrl('/v1/failures');
         url.searchParams.set('app_id', project.appId);
         url.searchParams.set('environment_id', project.environmentId);
+        url.searchParams.set('window', windowKey);
         url.searchParams.set('limit', '50');
         const response = await ownerFetch(url, ownerToken);
         if (!response.ok) throw new Error(`API returned ${response.status}`);
@@ -719,7 +733,7 @@ function DataReceived({
     return () => {
       cancelled = true;
     };
-  }, [ownerToken, project, refresh]);
+  }, [ownerToken, project, refresh, windowKey]);
 
   return (
     <div className="transparency-view">
@@ -744,7 +758,7 @@ function DataReceived({
             <strong>0</strong> payload fields
           </span>
           <span>
-            <strong>24h</strong> failure window
+            <strong>24h</strong> max retention
           </span>
         </div>
       </section>
@@ -785,10 +799,10 @@ function DataReceived({
         ) : null}
         {!loading && !error && data?.failures.length === 0 ? (
           <div className="failure-empty">
-            <strong>No retained failures in the last 24 hours</strong>
+            <strong>No retained failures in the last {WINDOW_LABELS[windowKey]}</strong>
             <p>
-              This means there are no individual 4xx or 5xx rows to show. Check Endpoints for the
-              complete aggregate traffic picture.
+              There are no individual 4xx or 5xx rows in this period. Choose a longer period or
+              check Endpoints for the complete aggregate traffic picture.
             </p>
           </div>
         ) : null}
@@ -865,7 +879,7 @@ function DataReceived({
       <p className="transparency-footnote">
         Contract v1 is enforced by the ingest validator.{' '}
         <a
-          href="https://github.com/sarthakagrawal927/app-health/blob/main/packages/contracts/src/event.ts"
+          href="https://github.com/sass-maker/app-health/blob/main/packages/contracts/src/event.ts"
           target="_blank"
           rel="noreferrer"
         >
@@ -1032,19 +1046,17 @@ function Dashboard({
               </>
             )}
           </div>
-          {view === 'endpoints' ? (
-            <div className="window-control" aria-label="Time window">
-              {WINDOWS.map((value) => (
-                <button
-                  key={value}
-                  aria-pressed={windowKey === value}
-                  onClick={() => setWindowKey(value)}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <div className="window-control" aria-label="Time window">
+            {WINDOWS.map((value) => (
+              <button
+                key={value}
+                aria-pressed={windowKey === value}
+                onClick={() => setWindowKey(value)}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
         </div>
         {view === 'endpoints' ? (
           <>
@@ -1188,7 +1200,7 @@ function Dashboard({
             </footer>
           </>
         ) : (
-          <DataReceived project={project} ownerToken={ownerToken} />
+          <DataReceived project={project} ownerToken={ownerToken} windowKey={windowKey} />
         )}
       </main>
     </div>

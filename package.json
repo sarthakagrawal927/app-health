@@ -16,19 +16,18 @@
     "typecheck": "pnpm --silent -r run typecheck",
     "test": "pnpm --silent -r run test",
     "build": "pnpm --silent -r run build",
-    "deploy:guard": "bash ../fleet-ops/scripts/fleet-deploy-guard.sh app-health",
     "deploy:dry-run": "pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --dry-run",
-    "d1:migrate:production": "pnpm run deploy:guard && pnpm --filter @app-health/worker exec wrangler d1 migrations apply DB --remote --env=\"\"",
-    "deploy": "pnpm run deploy:guard && pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\"",
+    "d1:migrate:production": "pnpm --filter @app-health/worker exec wrangler d1 migrations apply DB --remote --env=\"\"",
+    "deploy": "pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --tag \"$(git rev-parse HEAD)\"",
     "clean": "pnpm --silent -r exec rimraf dist .turbo *.tsbuildinfo"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.3.0",
+    "prettier": "^3.9.6",
     "rimraf": "^6.0.0",
     "typescript": "^5.6.0",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.65.0"
   }
 }

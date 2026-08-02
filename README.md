@@ -107,7 +107,7 @@ The public `node-v0.2.1` GitHub Release is the install fallback while the npm
 publisher identity remains unavailable:
 
 ```bash
-npm install https://github.com/sarthakagrawal927/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz
+npm install https://github.com/sass-maker/app-health/releases/download/node-v0.2.1/saas-maker-app-health-0.2.1.tgz
 ```
 
 For Hono Workers, configure the core client with `runtime: 'worker'` and
@@ -123,6 +123,10 @@ application response, and become a no-op when a lazy client resolver returns
 ```bash
 go get github.com/sarthakagrawal927/app-health/packages/go/echo/v5@v5.1.0
 ```
+
+The repository now lives under SaaS Maker. The original GitHub namespace
+remains the Go module path so existing imports and published module versions
+continue to work.
 
 ```go
 cleanup := apphealthechov5.Install(e, apphealthechov5.Config{

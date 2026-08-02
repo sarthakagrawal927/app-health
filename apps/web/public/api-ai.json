@@ -1,0 +1,33 @@
+{
+  "name": "App Health",
+  "version": "1",
+  "url": "https://health.sassmaker.com",
+  "llms": "https://health.sassmaker.com/llms.txt",
+  "llmsFull": "https://health.sassmaker.com/llms-full.txt",
+  "sitemap": "https://health.sassmaker.com/sitemap.xml",
+  "robots": "https://health.sassmaker.com/robots.txt",
+  "markdown": {
+    "suffix": ".md",
+    "negotiation": true
+  },
+  "surfaces": [
+    {
+      "id": "home",
+      "url": "https://health.sassmaker.com/",
+      "md": "https://health.sassmaker.com/index.md",
+      "kind": "static",
+      "description": "Product home"
+    },
+    {
+      "id": "changelog",
+      "url": "https://health.sassmaker.com/changelog",
+      "md": "https://health.sassmaker.com/changelog.md",
+      "kind": "static",
+      "description": "Verified product releases"
+    }
+  ],
+  "auth": {
+    "public": true,
+    "notes": "Auth-walled app routes are not agent-indexed unless listed here."
+  }
+}
