@@ -6,8 +6,13 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
+
+var responseWriterPool = sync.Pool{
+	New: func() any { return new(responseWriter) },
+}
 
 // RouteResolver resolves a normalized route template for a request when the
 // framework does not populate Request.Pattern (e.g. third-party routers).
@@ -36,7 +41,14 @@ func (c *Client) Middleware(next http.Handler) http.Handler {
 		if serveMux != nil {
 			_, muxPattern = serveMux.Handler(r)
 		}
-		rw := &responseWriter{ResponseWriter: w}
+		rw := responseWriterPool.Get().(*responseWriter)
+		rw.ResponseWriter = w
+		rw.status = 0
+		rw.wroteHeader = false
+		defer func() {
+			rw.ResponseWriter = nil
+			responseWriterPool.Put(rw)
+		}()
 		defer func() {
 			elapsed := c.now().Sub(start)
 			if rec := recover(); rec != nil {
