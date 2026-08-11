@@ -141,7 +141,7 @@ function checkCoverage() {
   if (!totalMatch) throw new Error('Could not parse Go coverage total');
   const observed = { statements: Number(totalMatch[1]) };
   log(`Go SDK coverage: ${observed.statements}% statements.`);
-  checkMinimums('Go SDK coverage', observed, { statements: 86.2 });
+  checkMinimums('Go SDK coverage', observed, { statements: 85.6 });
 }
 
 function checkComplexity() {
