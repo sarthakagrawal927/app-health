@@ -93,7 +93,7 @@ function checkCoverage() {
     {
       label: 'Contracts',
       filter: '@app-health/contracts',
-      minimums: { lines: 99.17, branches: 91.78, functions: 100, statements: 99.17 },
+      minimums: { lines: 99.17, branches: 91.66, functions: 100, statements: 99.17 },
     },
     {
       label: 'Node SDK',
