@@ -1,6 +1,6 @@
 # app-health — PROJECT STATUS
 
-Last updated: 2026-07-30
+Last updated: 2026-08-11
 
 ## Why / What
 
@@ -28,6 +28,9 @@ asynchronous endpoint summaries, aggregate-only storage, and a
 
 ## Timeline
 
+- 2026-08-11 — moved the public unlock shell into the initial HTML response so
+  its existing text LCP no longer waits for React to boot; retained the same
+  auth flow, privacy copy, responsive layout, and no-JavaScript description
 - 2026-07-31 — prepared and locally verified public agent discovery on the
   dashboard host plus complete search/social metadata; the private ingest host
   remains excluded and production deployment is still a separate manual step
@@ -94,7 +97,7 @@ asynchronous endpoint summaries, aggregate-only storage, and a
   record only trusted framework route templates, and keep bounded delivery
   alive with `ExecutionContext.waitUntil`.
 - **Go SDK:** real private GitHub module with `net/http` and `/echo` middleware, a bounded adapter record API, route-pattern/resolver support, response/error/panic preservation, privacy/outage/retry/overflow/close tests, and benchmark coverage.
-- **Operator dashboard:** local app/key setup, one-time key handoff, verified Express/Echo snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
+- **Operator dashboard:** initial-HTML public unlock shell, local app/key setup, one-time key handoff, verified Express/Echo snippets, installation states, stable endpoint sorting, 15-minute/1-hour/24-hour metrics, responsive table/cards, explicit health thresholds, and reviewed desktop/mobile states.
 - **End-to-end local proof:** the Express and Go examples each sent `/health`, `/users/:id`, and `/orders` through the same local ingest and query APIs used by the dashboard; both runtimes reached connected state and the aggregates updated.
 - **Storage-bounded ingest:** retry-stable batch IDs reduce temporary D1 dedupe rows by up to 100× at the default batch size; successful requests stay aggregate-only and individual 4xx/5xx details expire after 24 hours.
 - **Collection transparency:** an on-demand dashboard view shows the latest 50 retained 4xx/5xx failures, exact accepted telemetry fields, storage/retention boundaries, excluded payload and identity data, contract provenance, and last-refresh evidence without polling or adding storage.
