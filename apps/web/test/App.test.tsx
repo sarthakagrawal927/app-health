@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { App, OwnerUnlock, sortEndpoints } from '../src/App.js';
 import type {
   AppEnvironmentV1,
@@ -128,6 +130,16 @@ describe('App Health V0 UI', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('renders the public unlock hero in the initial HTML response', () => {
+    const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+
+    expect(html).toContain('data-initial-unlock-shell');
+    expect(html).toContain('<h1 id="unlock-title">Your services, at a glance.</h1>');
+    expect(html).toContain('No request bodies or identities');
+    expect(html).toContain('No owner key stored in this browser');
+    expect(html).toContain('Aggregate route metrics only');
   });
 
   it('unlocks with an owner key without persisting it in browser storage', async () => {

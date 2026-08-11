@@ -87,8 +87,71 @@
     <!-- fleet-jsonld:end -->
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="unlock-shell" data-initial-unlock-shell>
+        <section class="unlock-intro" aria-labelledby="unlock-title">
+          <a class="brand" href="/" aria-label="App Health home">
+            <span class="brand-mark" aria-hidden="true">
+              <i></i>
+              <i></i>
+              <i></i>
+            </span>
+            App Health
+          </a>
+          <h1 id="unlock-title">Your services, at a glance.</h1>
+          <p>
+            Unlock the private operator view to issue SDK keys and inspect aggregate endpoint
+            health.
+          </p>
+          <ul aria-label="Privacy guarantees">
+            <li>No request bodies or identities</li>
+            <li>No owner key stored in this browser</li>
+            <li>Aggregate route metrics only</li>
+          </ul>
+          <nav class="public-links" aria-label="Public product links">
+            <a href="/changelog">Changelog</a>
+            <a href="https://github.com/sass-maker/app-health/issues">Roadmap</a>
+            <a href="https://github.com/sass-maker/app-health">Source</a>
+          </nav>
+        </section>
+        <section class="unlock-panel" aria-label="Unlock App Health">
+          <div class="unlock-status">
+            <span class="signal-dot"></span>
+            Private operator access
+          </div>
+          <h2>Unlock dashboard</h2>
+          <p>Use the owner key saved for this Cloudflare deployment.</p>
+          <form>
+            <label>
+              Owner key
+              <input
+                autocomplete="current-password"
+                autofocus
+                maxlength="256"
+                placeholder="aho_••••••••••••"
+                required
+                spellcheck="false"
+                type="password"
+              />
+            </label>
+            <button class="primary-button" disabled type="submit">
+              Unlock
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <p class="unlock-note">The key stays in memory and is cleared when this page closes.</p>
+        </section>
+      </main>
+    </div>
+    <script>
+      if (window.location.pathname !== '/') document.getElementById('root').textContent = '';
+    </script>
     <noscript>
+      <style>
+        #root {
+          display: none;
+        }
+      </style>
       <main>
         <h1>Privacy-first endpoint health</h1>
         <p>
