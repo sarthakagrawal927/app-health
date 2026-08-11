@@ -91,7 +91,7 @@ export interface FailureRepository {
   ): Promise<FailureEventV1[]>;
 }
 
-export interface ObservedEndpoint {
+interface ObservedEndpoint {
   method: string;
   route: string;
   first_seen: number;

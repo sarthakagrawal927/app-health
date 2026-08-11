@@ -7,11 +7,7 @@
 // response never awaits ingest.
 
 import { MAX_BATCH_EVENTS, SCHEMA_VERSION, type EventV1 } from './contracts.js';
-import {
-  createDiagnostics,
-  type AppHealthDiagnostics,
-  type DiagnosticsSink,
-} from './diagnostics.js';
+import { createDiagnostics, type AppHealthDiagnostics } from './diagnostics.js';
 import {
   normalizeDuration,
   normalizeMethod,
@@ -305,6 +301,3 @@ function boundedInteger(name: string, value: number, min: number, max: number): 
   }
   return value;
 }
-
-// Re-export the diagnostics sink type for internal/external typing parity.
-export type { DiagnosticsSink };

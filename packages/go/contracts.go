@@ -19,20 +19,20 @@ const SchemaVersion = "v1"
 
 // Field bounds. These mirror packages/contracts/src/constants.ts.
 const (
-	MaxBatchEvents     = 1000
-	MaxMethodLength    = 16
-	MaxRouteLength     = 256
-	MaxReleaseLength   = 128
+	MaxBatchEvents       = 1000
+	MaxMethodLength      = 16
+	MaxRouteLength       = 256
+	MaxReleaseLength     = 128
 	MaxEnvironmentLength = 64
-	MaxDurationMs      = 600_000
-	MaxClockSkewMs     = 5 * 60 * 1000
-	MinStatusCode      = 100
-	MaxStatusCode      = 599
-	InsufficientMinReq = 20
-	UnhealthyErrRate   = 0.05
-	UnhealthyP95Ms     = 2000
-	DegradedErrRate    = 0.01
-	DegradedP95Ms      = 1000
+	MaxDurationMs        = 600_000
+	MaxClockSkewMs       = 5 * 60 * 1000
+	MinStatusCode        = 100
+	MaxStatusCode        = 599
+	InsufficientMinReq   = 20
+	UnhealthyErrRate     = 0.05
+	UnhealthyP95Ms       = 2000
+	DegradedErrRate      = 0.01
+	DegradedP95Ms        = 1000
 )
 
 // LatencyBucketBoundsMs mirrors the TypeScript fixed histogram bounds.
@@ -128,19 +128,19 @@ type EnvironmentV1 struct {
 }
 
 type KeyRecordV1 struct {
-	ID            string `json:"id"`
-	AppID         string `json:"app_id"`
+	ID            string  `json:"id"`
+	AppID         string  `json:"app_id"`
 	EnvironmentID *string `json:"environment_id"`
-	VerifierHash  string `json:"verifier_hash"`
-	CreatedAt     int64  `json:"created_at"`
-	RevokedAt     *int64 `json:"revoked_at"`
+	VerifierHash  string  `json:"verifier_hash"`
+	CreatedAt     int64   `json:"created_at"`
+	RevokedAt     *int64  `json:"revoked_at"`
 }
 
 type KeyDisplayV1 struct {
-	Key           string `json:"key"`
-	AppID         string `json:"app_id"`
+	Key           string  `json:"key"`
+	AppID         string  `json:"app_id"`
 	EnvironmentID *string `json:"environment_id"`
-	CreatedAt     int64  `json:"created_at"`
+	CreatedAt     int64   `json:"created_at"`
 }
 
 type CreateAppRequestV1 struct {
@@ -180,8 +180,8 @@ type EndpointQueryResponseV1 struct {
 }
 
 var (
-	uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	methodPattern = regexp.MustCompile(`^[A-Z]+$`)
+	uuidV4Pattern      = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	methodPattern      = regexp.MustCompile(`^[A-Z]+$`)
 	environmentPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
