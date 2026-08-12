@@ -37,6 +37,7 @@ customer request paths.
 | `@cloudflare/workers-types`                                                                               | apps/worker (dev)                                    | Type definitions for the Worker `fetch` handler. No runtime dependency.                                      |
 | `@bufbuild/protobuf`                                                                                      | apps/worker                                          | Bounded protobuf wire reader/writer used to project OTLP traces without adding an OpenTelemetry SDK runtime. |
 | `typescript`, `eslint`, `prettier`, `typescript-eslint`, `@eslint/js`, `eslint-config-prettier`, `rimraf` | root (dev)                                           | Shared typecheck, lint, format, and clean tooling.                                                           |
+| `knip`, `jscpd`, `@vitest/coverage-v8`                                                                    | root (dev)                                           | Unused-code, duplication, and test-coverage evidence for the Fleet code-health gate.                         |
 | `tsup`                                                                                                    | packages/node (dev)                                  | Produces the public SDK's ESM, CommonJS, and declaration artifacts.                                          |
 | Go standard library                                                                                       | packages/go core                                     | Bounded queue, delivery, diagnostics, and `net/http` middleware.                                             |
 | `github.com/labstack/echo/v4`                                                                             | packages/go/echo                                     | Framework route-template and response/error integration; v4.12 is the Go 1.22-compatible minimum.            |
@@ -57,16 +58,18 @@ All commands run from the repository root unless noted.
 pnpm install
 ```
 
-### TypeScript checks (format, lint, typecheck, test, build)
+### Repository checks
 
 ```bash
-pnpm run check            # format:check + lint + typecheck + test + build
+pnpm run check            # complete TypeScript + Go code-health gate
 pnpm run format           # write prettier formatting
 pnpm run format:check     # verify prettier formatting
 pnpm run lint             # eslint
 pnpm run typecheck        # tsc --noEmit across all workspace packages
 pnpm run test             # vitest run across all workspace packages
 pnpm run build            # build all workspace packages (web -> vite build)
+pnpm run quality:coverage # ratcheted Vitest + Go coverage
+pnpm run quality:unused   # strict Knip unused-code/dependency analysis
 ```
 
 ### Go (packages/go)

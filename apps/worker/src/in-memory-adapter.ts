@@ -9,10 +9,8 @@
 
 import {
   BUCKET_MS,
-  INSTALLATION_STATES,
   LATENCY_BUCKET_BOUNDS_MS,
   LATENCY_HISTOGRAM_BUCKETS,
-  RUNTIMES,
   SEED_APP_ID,
   SEED_APP_NAME,
   SEED_ENV_ID,
@@ -44,7 +42,7 @@ import { MAX_ENVIRONMENTS_PER_APP } from './repository.js';
 /** Bounded deduplication window for event IDs. */
 export const DEDUPE_WINDOW_MS = 60 * 60 * 1000;
 /** An environment is stale when no ingest has been seen for this long. */
-export const STALE_THRESHOLD_MS = 15 * 60 * 1000;
+const STALE_THRESHOLD_MS = 15 * 60 * 1000;
 
 /** A status >= 500 counts as an error in aggregate buckets. */
 function isErrorStatus(status: number): boolean {
@@ -574,13 +572,4 @@ function bucketKey(
   return `${appId}|${envId}|${bucketStart}|${method}|${route}`;
 }
 
-// Type guards kept for runtime validation of installation states/runtimes.
-export function isInstallationState(value: string): value is (typeof INSTALLATION_STATES)[number] {
-  return (INSTALLATION_STATES as readonly string[]).includes(value);
-}
-
-export function isRuntime(value: string): value is Runtime {
-  return (RUNTIMES as readonly string[]).includes(value);
-}
-
-export { isErrorStatus, BUCKET_MS };
+export { isErrorStatus };

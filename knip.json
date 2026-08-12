@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/**/*.mjs"],
+      "project": ["scripts/**/*.mjs"],
+      "ignoreDependencies": ["@vitest/coverage-v8", "jscpd"]
+    },
+    "apps/worker": {
+      "ignore": ["src/agent-edge.d.mts"],
+      "ignoreDependencies": ["wrangler"]
+    },
+    "packages/node": {
+      "ignoreIssues": {
+        "src/express.ts": ["types"]
+      }
+    }
+  }
+}

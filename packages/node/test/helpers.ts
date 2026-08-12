@@ -2,7 +2,7 @@
 
 import type { FetchLike } from '../src/index.js';
 
-export interface CapturedRequest {
+interface CapturedRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
@@ -20,7 +20,7 @@ export interface FetchController {
   reset: () => void;
 }
 
-export type ResponsePlan =
+type ResponsePlan =
   | { ok: true; status: number; body?: unknown }
   | { ok: false; status?: number; error?: string }
   | { throw: string }

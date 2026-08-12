@@ -18,18 +18,21 @@ Run from the repository root unless noted.
 | Command | Purpose |
 | --- | --- |
 | `pnpm install` | Install TypeScript workspace dependencies. |
-| `pnpm run check` | format:check + lint + typecheck + test + build (TypeScript). |
+| `pnpm run check` | Full Fleet code-health gate across TypeScript and Go. |
 | `pnpm run format` / `pnpm run format:check` | Prettier write / verify. |
 | `pnpm run lint` | ESLint (flat config). |
 | `pnpm run typecheck` | `tsc --noEmit` across all workspace packages. |
 | `pnpm run test` | `vitest run` across all workspace packages. |
 | `pnpm run build` | Build all workspace packages (web uses `vite build`). |
+| `pnpm run quality:coverage` | Ratcheted Vitest coverage for all TS surfaces plus Go statement coverage. |
+| `pnpm run quality:unused` | Strict Knip unused file/export/type/dependency check. |
+| `pnpm run quality:complexity` / `quality:duplication` | Ratcheted production complexity and clone checks. |
 | `pnpm --filter @app-health/web dev` | Vite dev server for the operator shell. |
 | `cd packages/go && go test ./...` | Go contract tests. |
 | `cd packages/go && go vet ./...` | Go vet. |
 
-CI (`.github/workflows/ci.yml`) runs the TypeScript `pnpm run check` job and a
-Go job that runs `go test ./...` and `go vet ./...` from `packages/go`.
+CI (`.github/workflows/ci.yml`) runs the aggregate `pnpm run check` gate and a
+separate Go compatibility job that retains the tagged Echo release canary.
 
 ## Boundaries
 

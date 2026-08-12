@@ -12,7 +12,7 @@
 
 /** @type {{ name: string, url: string, llmsTxt: string, llmsFullTxt?: string, indexMd: string, catalog: object }} */
 // biome-ignore format: generated payload from apply-agent-surfaces (JSON keys/quotes)
-export const AGENT_SURFACE = {
+const AGENT_SURFACE = {
   name: 'App Health',
   url: 'https://health.sassmaker.com',
   llmsFullTxt:

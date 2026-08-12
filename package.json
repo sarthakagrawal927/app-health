@@ -6,16 +6,29 @@
   "type": "module",
   "packageManager": "pnpm@10.33.2",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19"
   },
   "scripts": {
-    "check": "pnpm --silent run format:check && pnpm --silent run lint && pnpm --silent run typecheck && pnpm --silent run test && pnpm --silent run build",
+    "check": "pnpm run quality",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "typecheck": "pnpm --silent -r run typecheck",
     "test": "pnpm --silent -r run test",
     "build": "pnpm --silent -r run build",
+    "knip": "knip --no-exit-code --reporter symbols",
+    "knip:strict": "knip --reporter symbols --no-config-hints",
+    "quality:go-format": "node scripts/check-code-health.mjs go-format",
+    "quality:go-vet": "node scripts/check-code-health.mjs go-vet",
+    "quality:coverage": "node scripts/check-code-health.mjs coverage",
+    "quality:unused": "pnpm run knip:strict",
+    "quality:complexity": "node scripts/check-code-health.mjs complexity",
+    "quality:duplication": "node scripts/check-code-health.mjs duplication",
+    "quality:cycles": "knip --cycles --no-config-hints",
+    "quality:dependencies": "node scripts/check-code-health.mjs dependencies",
+    "quality:suppressions": "node scripts/check-code-health.mjs suppressions",
+    "quality:hygiene": "node scripts/check-code-health.mjs hygiene",
+    "quality": "pnpm --silent run format:check && pnpm --silent run quality:go-format && pnpm --silent run lint && pnpm --silent run typecheck && pnpm --silent run quality:go-vet && pnpm --silent run build && pnpm --silent run quality:coverage && pnpm --silent run quality:unused && pnpm --silent run quality:complexity && pnpm --silent run quality:duplication && pnpm --silent run quality:cycles && pnpm --silent run quality:dependencies && pnpm --silent run quality:suppressions && pnpm --silent run quality:hygiene",
     "deploy:dry-run": "pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --dry-run",
     "d1:migrate:production": "pnpm --filter @app-health/worker exec wrangler d1 migrations apply DB --remote --env=\"\"",
     "deploy": "pnpm run build && pnpm --filter @app-health/worker exec wrangler deploy --env=\"\" --tag \"$(git rev-parse HEAD)\"",
@@ -23,11 +36,24 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
+    "@vitest/coverage-v8": "3.2.7",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^9.1.0",
+    "jscpd": "5.0.14",
+    "knip": "6.32.2",
     "prettier": "^3.9.6",
     "rimraf": "^6.0.0",
     "typescript": "^5.6.0",
-    "typescript-eslint": "^8.65.0"
+    "typescript-eslint": "^8.67.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@<2.0.0": "1.1.18",
+      "brace-expansion@>=5.0.0 <6.0.0": "5.0.9",
+      "esbuild@>=0.25.0 <0.28.1": "0.28.1",
+      "js-yaml@>=4.0.0 <5.0.0": "4.3.1",
+      "nanoid@>=3.0.0 <4.0.0": "3.3.17",
+      "undici@>=7.0.0 <8.0.0": "7.29.0"
+    }
   }
 }
