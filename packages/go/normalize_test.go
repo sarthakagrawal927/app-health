@@ -22,12 +22,18 @@ func TestNormalizeRelease(t *testing.T) {
 
 func TestNormalizeRouteTemplate(t *testing.T) {
 	tests := map[string]string{
+		"/":          "/",
 		"/users/:id": "/users/:id",
 		"/users/42":  "/users/:id",
+		"/users/000": "/users/:id",
 		"/users/550e8400-e29b-41d4-a716-446655440000": "/users/:uuid",
-		"/users/:id?token=secret":                     "",
-		"users/:id":                                   "",
-		"":                                            "",
+		"/users/550E8400-E29B-41D4-A716-446655440000": "/users/:uuid",
+		"/users/550e8400-e29b-41d4-a716-44665544000z": "/users/550e8400-e29b-41d4-a716-44665544000z",
+		"/users/42a":              "/users/42a",
+		"//users//42/":            "//users//:id/",
+		"/users/:id?token=secret": "",
+		"users/:id":               "",
+		"":                        "",
 	}
 	for input, want := range tests {
 		if got := normalizeRouteTemplate(input); got != want {
