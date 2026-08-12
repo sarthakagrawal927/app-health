@@ -23,7 +23,7 @@ export interface AppHealthDiagnostics {
   lastSendError: string | null;
 }
 
-export function emptyDiagnostics(): AppHealthDiagnostics {
+function emptyDiagnostics(): AppHealthDiagnostics {
   return {
     queued: 0,
     droppedOverflow: 0,

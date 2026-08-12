@@ -5,7 +5,6 @@
 
 import {
   BUCKET_MS,
-  CreateAppRequestV1,
   FAILURE_RETENTION_HOURS,
   WINDOW_MS,
   FailureQueryResponseV1,
@@ -383,6 +382,3 @@ async function legacyBatchID(batch: EventBatchV1): Promise<string> {
     .join('');
   return `legacy-${hex}`;
 }
-
-// Re-export the request validator so the worker route can parse bodies.
-export { CreateAppRequestV1 };
