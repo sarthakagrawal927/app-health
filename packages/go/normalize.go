@@ -1,15 +1,8 @@
 package apphealth
 
 import (
-	"regexp"
 	"strings"
 )
-
-// numericSegment matches a path segment that is entirely decimal digits.
-var numericSegment = regexp.MustCompile(`^[0-9]+$`)
-
-// uuidSegment matches an RFC 4122 shaped UUID (any version/variant) segment.
-var uuidSegment = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // normalizeRouteTemplate validates a trusted framework route template and
 // replaces purely numeric path segments with ":id" and UUID-shaped segments
@@ -22,23 +15,69 @@ func normalizeRouteTemplate(path string) string {
 	if path == "" || path != strings.TrimSpace(path) || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "?#") {
 		return ""
 	}
-	segments := strings.Split(path, "/")
-	for i, seg := range segments {
-		if seg == "" {
-			continue
+	var normalized strings.Builder
+	normalized.Grow(len(path))
+	for start := 0; ; {
+		end := strings.IndexByte(path[start:], '/')
+		if end < 0 {
+			end = len(path)
+		} else {
+			end += start
 		}
+		segment := path[start:end]
 		switch {
-		case uuidSegment.MatchString(seg):
-			segments[i] = ":uuid"
-		case numericSegment.MatchString(seg):
-			segments[i] = ":id"
+		case isUUIDSegment(segment):
+			normalized.WriteString(":uuid")
+		case isNumericSegment(segment):
+			normalized.WriteString(":id")
+		default:
+			normalized.WriteString(segment)
 		}
+		if end == len(path) {
+			break
+		}
+		normalized.WriteByte('/')
+		start = end + 1
 	}
-	out := strings.Join(segments, "/")
+	out := normalized.String()
 	if len(out) > MaxRouteLength {
 		return ""
 	}
 	return out
+}
+
+func isNumericSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for index := 0; index < len(segment); index++ {
+		if segment[index] < '0' || segment[index] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isUUIDSegment(segment string) bool {
+	if len(segment) != 36 {
+		return false
+	}
+	for index := 0; index < len(segment); index++ {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			if segment[index] != '-' {
+				return false
+			}
+			continue
+		}
+		character := segment[index]
+		if (character >= '0' && character <= '9') ||
+			(character >= 'a' && character <= 'f') ||
+			(character >= 'A' && character <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // normalizeRelease accepts only bounded machine-safe release identifiers.
