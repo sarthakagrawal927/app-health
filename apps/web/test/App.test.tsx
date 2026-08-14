@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  PUBLIC_ENTRYPOINTS,
+  renderPublicEntrypoint,
+} from '../scripts/generate-public-entrypoints.mjs';
 import { App, OwnerUnlock, sortEndpoints } from '../src/App.js';
 import type {
   AppEnvironmentV1,
@@ -140,6 +144,15 @@ describe('App Health V0 UI', () => {
     expect(html).toContain('No request bodies or identities');
     expect(html).toContain('No owner key stored in this browser');
     expect(html).toContain('Aggregate route metrics only');
+  });
+
+  it.each(PUBLIC_ENTRYPOINTS)('gives $path an exact self-canonical', (entry) => {
+    const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+    const html = renderPublicEntrypoint(indexHtml, entry);
+    const canonical = `https://health.sassmaker.com${entry.path}`;
+    expect(html).toContain(`<link rel="canonical" href="${canonical}" />`);
+    expect(html).toContain(`<meta property="og:url" content="${canonical}" />`);
+    expect(html).toContain(`<title>${entry.title}</title>`);
   });
 
   it('unlocks with an owner key without persisting it in browser storage', async () => {
