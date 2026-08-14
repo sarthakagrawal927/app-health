@@ -10,4 +10,5 @@ dist/
 *.tsbuildinfo
 .turbo/
 coverage/
+/apps/web/changelog.html
 /examples/go/go

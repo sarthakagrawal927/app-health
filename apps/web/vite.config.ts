@@ -1,5 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
+import { coverageConfigDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'node:path';
 
 interface LocalWorkerModule {
   default: {
@@ -52,9 +54,20 @@ function localWorkerApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), localWorkerApi()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        changelog: resolve(import.meta.dirname, 'changelog.html'),
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./test/setup.ts'],
+    coverage: {
+      exclude: [...coverageConfigDefaults.exclude, '**/scripts/*.d.mts'],
+    },
   },
 });
