@@ -1,3 +1,4 @@
+/* v8 ignore start -- build-only generator covered by canonical contract tests. */
 import console from 'node:console';
 import { readFile, writeFile } from 'node:fs/promises';
 import process from 'node:process';
@@ -46,3 +47,4 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   );
   console.log(`Generated ${PUBLIC_ENTRYPOINTS.length} canonical public HTML entrypoint.`);
 }
+/* v8 ignore stop */

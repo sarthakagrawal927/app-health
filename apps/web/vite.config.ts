@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
+import { coverageConfigDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 
@@ -66,7 +67,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./test/setup.ts'],
     coverage: {
-      exclude: ['scripts/**'],
+      exclude: [...coverageConfigDefaults.exclude, '**/scripts/*.d.mts'],
     },
   },
 });
