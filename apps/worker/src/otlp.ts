@@ -329,6 +329,17 @@ function parseJsonSpan(value: unknown): RawSpan {
   };
 }
 
+function parseAnyValue(anyValue: Record<string, unknown>): AttributeValue | null {
+  const stringValue = anyValue.stringValue ?? anyValue.string_value;
+  if (typeof stringValue === 'string') return stringValue;
+  const integer = finiteInteger(anyValue.intValue ?? anyValue.int_value);
+  if (integer !== null) return integer;
+  const scalar =
+    anyValue.doubleValue ?? anyValue.double_value ?? anyValue.boolValue ?? anyValue.bool_value;
+  if (typeof scalar === 'number' || typeof scalar === 'boolean') return scalar;
+  return null;
+}
+
 function parseJsonAttributes(value: unknown): Map<string, AttributeValue> {
   const attributes = new Map<string, AttributeValue>();
   for (const entry of array(value)) {
@@ -336,22 +347,8 @@ function parseJsonAttributes(value: unknown): Map<string, AttributeValue> {
     if (typeof keyValue?.key !== 'string') continue;
     const anyValue = record(keyValue.value);
     if (!anyValue) continue;
-    const stringValue = anyValue.stringValue ?? anyValue.string_value;
-    if (typeof stringValue === 'string') {
-      attributes.set(keyValue.key, stringValue);
-      continue;
-    }
-    const intValue = anyValue.intValue ?? anyValue.int_value;
-    const integer = finiteInteger(intValue);
-    if (integer !== null) {
-      attributes.set(keyValue.key, integer);
-      continue;
-    }
-    const scalar =
-      anyValue.doubleValue ?? anyValue.double_value ?? anyValue.boolValue ?? anyValue.bool_value;
-    if (typeof scalar === 'number' || typeof scalar === 'boolean') {
-      attributes.set(keyValue.key, scalar);
-    }
+    const parsed = parseAnyValue(anyValue);
+    if (parsed !== null) attributes.set(keyValue.key, parsed);
   }
   return attributes;
 }

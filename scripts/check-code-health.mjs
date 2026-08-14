@@ -179,9 +179,9 @@ function checkComplexity() {
   );
   // Ratcheted legacy debt: https://github.com/sass-maker/app-health/issues/39
   failRegressions('Complexity', observed, {
-    violations: 7,
-    maxCcn: 53,
-    maxLength: 264,
+    violations: 5,
+    maxCcn: 24,
+    maxLength: 246,
     maxParams: 7,
   });
 }
@@ -220,7 +220,7 @@ function checkDuplication() {
   failRegressions('Duplication', observed, {
     clones: 5,
     duplicatedLines: 75,
-    percentage: 1.0255709011349652,
+    percentage: 1.011190508291762,
   });
 }
 
