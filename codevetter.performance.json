@@ -1,0 +1,18 @@
+{
+  "schema_version": "codevetter-performance-flows/v1",
+  "flows": [
+    {
+      "sources": ["packages/go/middleware.go"],
+      "performance": {
+        "adapter": "go-bench",
+        "target": "packages/go/benchmark_test.go",
+        "name": "BenchmarkMiddlewareOverhead"
+      },
+      "correctness": {
+        "adapter": "go-test",
+        "target": "packages/go/middleware_test.go",
+        "name": "TestMiddleware_ServeMuxPattern"
+      }
+    }
+  ]
+}
