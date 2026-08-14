@@ -1,5 +1,7 @@
+import console from 'node:console';
 import { readFile, writeFile } from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
+import process from 'node:process';
+import { pathToFileURL, URL } from 'node:url';
 
 export const PUBLIC_ENTRYPOINTS = [
   {
