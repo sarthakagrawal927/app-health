@@ -190,69 +190,211 @@ function hostAllowed(url: URL, bundle: AdapterBundle, env: Env, kind: 'owner' | 
   );
 }
 
+async function handleIngestRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  env: Env,
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/ingest') return null;
+  if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  try {
+    const result = await bundle.service.ingest(
+      extractBearerKey(request),
+      await readJsonBounded(request),
+      Date.now(),
+    );
+    if (!result.ok) return json(result.status, { error: result.error });
+    return json(202, { accepted: result.accepted, duplicates: result.duplicates });
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return json(413, { error: 'request body too large' });
+    throw error;
+  }
+}
+
+async function handleTracesRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  env: Env,
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/traces') return null;
+  if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  const contentType = otlpContentType(request);
+  if (!contentType) return json(415, { error: 'unsupported OTLP content type' });
+  const keyRecord = await bundle.service.verifyIngestKey(extractBearerKey(request));
+  if (!keyRecord) return json(401, { error: 'invalid or revoked ingest key' });
+  try {
+    const projection = await projectOtlpTraces(await readOtlpBodyBounded(request), contentType);
+    const result = await bundle.service.ingestEvents(
+      keyRecord,
+      'otel',
+      undefined,
+      projection.events,
+      Date.now(),
+    );
+    if (!result.ok) return json(result.status, { error: result.error });
+    const responseType = contentType === 'protobuf' ? 'application/x-protobuf' : 'application/json';
+    return new Response(otlpSuccessBody(contentType, projection.rejectedSpans), {
+      status: 200,
+      headers: { 'content-type': responseType },
+    });
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return json(413, { error: 'request body too large' });
+    if (error instanceof UnsupportedEncodingError)
+      return json(415, { error: 'unsupported content encoding' });
+    if (error instanceof InvalidOtlpError) return json(400, { error: error.message });
+    throw error;
+  }
+}
+
+async function handleAppsRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/apps') return null;
+  const { service } = bundle;
+  if (request.method === 'GET')
+    return json(200, ListAppsResponseV1.parse(await service.listApps(owner.appId)), true);
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  if (owner.appId) return productScopeForbidden();
+  try {
+    const parsed = CreateAppRequestV1.safeParse(await readJsonBounded(request));
+    if (!parsed.success) return json(400, { error: 'invalid app creation request' }, true);
+    return json(201, await service.createApp(parsed.data, Date.now()), true);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError)
+      return json(413, { error: 'request body too large' }, true);
+    throw error;
+  }
+}
+
+const REVOKE_PATTERN = /^\/v1\/apps\/([^/]+)\/environments\/([^/]+)\/revoke$/;
+
+async function handleRevokeRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  const revokeMatch = url.pathname.match(REVOKE_PATTERN);
+  if (!revokeMatch) return null;
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  if (owner.appId) return productScopeForbidden();
+  const keyRecord = await bundle.repos.keys.getActiveKeyForEnvironment(
+    revokeMatch[1],
+    revokeMatch[2],
+  );
+  if (!keyRecord) return json(404, { error: 'no active key for environment' }, true);
+  await bundle.service.revokeKey(keyRecord.id, Date.now());
+  return json(200, { revoked: true, key_id: keyRecord.id }, true);
+}
+
+async function handleInstallationStatusRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/installation/status') return null;
+  if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
+  const appId = url.searchParams.get('app_id');
+  const envId = url.searchParams.get('environment_id');
+  if (!appId || !envId) return json(400, { error: 'app_id and environment_id are required' });
+  if (!ownerCanAccessApp(owner, appId)) return productScopeForbidden();
+  return json(
+    200,
+    InstallationStatusV1.parse(await bundle.service.installationStatus(appId, envId, Date.now())),
+    true,
+  );
+}
+
+async function handleEndpointsRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/endpoints') return null;
+  if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
+  const windowParam = (url.searchParams.get('window') ?? '15m') as Window;
+  const parsed = EndpointQueryRequestV1.safeParse({
+    app_id: url.searchParams.get('app_id'),
+    environment_id: url.searchParams.get('environment_id'),
+    window: WINDOWS.includes(windowParam) ? windowParam : 'invalid',
+    sort: url.searchParams.get('sort') ?? 'health',
+    sort_dir: url.searchParams.get('sort_dir') ?? 'desc',
+  });
+  if (!parsed.success) return json(400, { error: 'invalid query' });
+  if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
+  return json(
+    200,
+    await bundle.service.queryEndpoints(
+      parsed.data.app_id,
+      parsed.data.environment_id,
+      parsed.data.window,
+      Date.now(),
+    ),
+    true,
+  );
+}
+
+async function handleFailuresRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/failures') return null;
+  if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
+  const parsed = FailureQueryRequestV1.safeParse({
+    app_id: url.searchParams.get('app_id'),
+    environment_id: url.searchParams.get('environment_id'),
+    window: url.searchParams.get('window') ?? undefined,
+    limit: Number(url.searchParams.get('limit') ?? DEFAULT_FAILURE_QUERY_LIMIT),
+  });
+  if (!parsed.success) return json(400, { error: 'invalid failure query' }, true);
+  if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
+  return json(
+    200,
+    await bundle.service.queryFailures(
+      parsed.data.app_id,
+      parsed.data.environment_id,
+      parsed.data.window,
+      parsed.data.limit,
+      Date.now(),
+    ),
+    true,
+  );
+}
+
+function handleEarlyRoutes(request: Request, env: Env, url: URL): Response | null {
+  if (url.hostname !== env.APP_HEALTH_INGEST_HOST) {
+    const agentResponse = handleAgentEdge(request);
+    if (agentResponse) return agentResponse;
+  }
+  if (url.pathname === '/v1/health') return json(200, { ok: true });
+  return null;
+}
+
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.hostname !== env.APP_HEALTH_INGEST_HOST) {
-      const agentResponse = handleAgentEdge(request);
-      if (agentResponse) return agentResponse;
-    }
-    if (url.pathname === '/v1/health') return json(200, { ok: true });
+    const earlyResponse = handleEarlyRoutes(request, env, url);
+    if (earlyResponse) return earlyResponse;
 
     const bundle = await resolveAdapter(env);
     if (!bundle) return json(503, { error: 'production bindings are incomplete' }, true);
-    const { service, identity } = bundle;
 
-    if (url.pathname === '/v1/ingest') {
-      if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
-      if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-      try {
-        const result = await service.ingest(
-          extractBearerKey(request),
-          await readJsonBounded(request),
-          Date.now(),
-        );
-        if (!result.ok) return json(result.status, { error: result.error });
-        return json(202, { accepted: result.accepted, duplicates: result.duplicates });
-      } catch (error) {
-        if (error instanceof BodyTooLargeError)
-          return json(413, { error: 'request body too large' });
-        throw error;
-      }
-    }
+    const ingestResponse = await handleIngestRoute(request, bundle, env, url);
+    if (ingestResponse) return ingestResponse;
 
-    if (url.pathname === '/v1/traces') {
-      if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
-      if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-      const contentType = otlpContentType(request);
-      if (!contentType) return json(415, { error: 'unsupported OTLP content type' });
-      const keyRecord = await service.verifyIngestKey(extractBearerKey(request));
-      if (!keyRecord) return json(401, { error: 'invalid or revoked ingest key' });
-      try {
-        const projection = await projectOtlpTraces(await readOtlpBodyBounded(request), contentType);
-        const result = await service.ingestEvents(
-          keyRecord,
-          'otel',
-          undefined,
-          projection.events,
-          Date.now(),
-        );
-        if (!result.ok) return json(result.status, { error: result.error });
-        const responseType =
-          contentType === 'protobuf' ? 'application/x-protobuf' : 'application/json';
-        return new Response(otlpSuccessBody(contentType, projection.rejectedSpans), {
-          status: 200,
-          headers: { 'content-type': responseType },
-        });
-      } catch (error) {
-        if (error instanceof BodyTooLargeError)
-          return json(413, { error: 'request body too large' });
-        if (error instanceof UnsupportedEncodingError)
-          return json(415, { error: 'unsupported content encoding' });
-        if (error instanceof InvalidOtlpError) return json(400, { error: error.message });
-        throw error;
-      }
-    }
+    const tracesResponse = await handleTracesRoute(request, bundle, env, url);
+    if (tracesResponse) return tracesResponse;
 
     if (!hostAllowed(url, bundle, env, 'owner')) return json(404, { error: 'not found' });
     if (!url.pathname.startsWith('/v1/')) {
@@ -260,97 +402,23 @@ const worker = {
       return json(404, { error: 'not found' });
     }
 
-    const owner = await identity.resolve(request);
+    const owner = await bundle.identity.resolve(request);
     if (!owner) return json(403, { error: 'owner secret required' }, true);
 
-    if (url.pathname === '/v1/apps') {
-      if (request.method === 'GET')
-        return json(200, ListAppsResponseV1.parse(await service.listApps(owner.appId)), true);
-      if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-      if (owner.appId) return productScopeForbidden();
-      try {
-        const parsed = CreateAppRequestV1.safeParse(await readJsonBounded(request));
-        if (!parsed.success) return json(400, { error: 'invalid app creation request' }, true);
-        return json(201, await service.createApp(parsed.data, Date.now()), true);
-      } catch (error) {
-        if (error instanceof BodyTooLargeError)
-          return json(413, { error: 'request body too large' }, true);
-        throw error;
-      }
-    }
+    const appsResponse = await handleAppsRoute(request, bundle, owner, url);
+    if (appsResponse) return appsResponse;
 
-    const revokeMatch = url.pathname.match(/^\/v1\/apps\/([^/]+)\/environments\/([^/]+)\/revoke$/);
-    if (revokeMatch) {
-      if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-      if (owner.appId) return productScopeForbidden();
-      const keyRecord = await bundle.repos.keys.getActiveKeyForEnvironment(
-        revokeMatch[1],
-        revokeMatch[2],
-      );
-      if (!keyRecord) return json(404, { error: 'no active key for environment' }, true);
-      await service.revokeKey(keyRecord.id, Date.now());
-      return json(200, { revoked: true, key_id: keyRecord.id }, true);
-    }
+    const revokeResponse = await handleRevokeRoute(request, bundle, owner, url);
+    if (revokeResponse) return revokeResponse;
 
-    if (url.pathname === '/v1/installation/status') {
-      if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
-      const appId = url.searchParams.get('app_id');
-      const envId = url.searchParams.get('environment_id');
-      if (!appId || !envId) return json(400, { error: 'app_id and environment_id are required' });
-      if (!ownerCanAccessApp(owner, appId)) return productScopeForbidden();
-      return json(
-        200,
-        InstallationStatusV1.parse(await service.installationStatus(appId, envId, Date.now())),
-        true,
-      );
-    }
+    const statusResponse = await handleInstallationStatusRoute(request, bundle, owner, url);
+    if (statusResponse) return statusResponse;
 
-    if (url.pathname === '/v1/endpoints') {
-      if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
-      const windowParam = (url.searchParams.get('window') ?? '15m') as Window;
-      const parsed = EndpointQueryRequestV1.safeParse({
-        app_id: url.searchParams.get('app_id'),
-        environment_id: url.searchParams.get('environment_id'),
-        window: WINDOWS.includes(windowParam) ? windowParam : 'invalid',
-        sort: url.searchParams.get('sort') ?? 'health',
-        sort_dir: url.searchParams.get('sort_dir') ?? 'desc',
-      });
-      if (!parsed.success) return json(400, { error: 'invalid query' });
-      if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
-      return json(
-        200,
-        await service.queryEndpoints(
-          parsed.data.app_id,
-          parsed.data.environment_id,
-          parsed.data.window,
-          Date.now(),
-        ),
-        true,
-      );
-    }
+    const endpointsResponse = await handleEndpointsRoute(request, bundle, owner, url);
+    if (endpointsResponse) return endpointsResponse;
 
-    if (url.pathname === '/v1/failures') {
-      if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
-      const parsed = FailureQueryRequestV1.safeParse({
-        app_id: url.searchParams.get('app_id'),
-        environment_id: url.searchParams.get('environment_id'),
-        window: url.searchParams.get('window') ?? undefined,
-        limit: Number(url.searchParams.get('limit') ?? DEFAULT_FAILURE_QUERY_LIMIT),
-      });
-      if (!parsed.success) return json(400, { error: 'invalid failure query' }, true);
-      if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
-      return json(
-        200,
-        await service.queryFailures(
-          parsed.data.app_id,
-          parsed.data.environment_id,
-          parsed.data.window,
-          parsed.data.limit,
-          Date.now(),
-        ),
-        true,
-      );
-    }
+    const failuresResponse = await handleFailuresRoute(request, bundle, owner, url);
+    if (failuresResponse) return failuresResponse;
 
     return json(404, { error: 'not found' });
   },

@@ -6,6 +6,7 @@ pnpm-lock.yaml
 packages/go
 openspec
 .codex
+.codevetter
 .github
 AGENTS.md
 PROJECT_STATUS.md
