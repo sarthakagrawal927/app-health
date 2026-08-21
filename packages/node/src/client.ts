@@ -84,7 +84,23 @@ const DEFAULTS = {
   retryBackoffMs: 100,
 } as const;
 
-export function createAppHealthClient(options: AppHealthClientOptions): AppHealthClient {
+type ResolvedClientConfig = {
+  endpointUrl: string;
+  maxQueueSize: number;
+  maxBatchSize: number;
+  flushIntervalMs: number;
+  requestTimeoutMs: number;
+  maxRetries: number;
+  retryBackoffMs: number;
+  fetchFn: FetchLike | undefined;
+  now: () => number;
+  uuid: () => string;
+  defaultRelease: string | undefined;
+  environment: string | undefined;
+  runtime: 'node' | 'worker';
+};
+
+function resolveClientConfig(options: AppHealthClientOptions): ResolvedClientConfig {
   if (typeof options?.key !== 'string' || options.key.length === 0) {
     throw new Error('@saas-maker/app-health: createAppHealthClient requires a non-empty `key`');
   }
@@ -92,47 +108,44 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
   if (endpoint === null) {
     throw new Error('@saas-maker/app-health: createAppHealthClient requires an http(s) `endpoint`');
   }
-  const endpointUrl = endpoint;
-  const maxQueueSize = boundedInteger(
-    'maxQueueSize',
-    options.maxQueueSize ?? DEFAULTS.maxQueueSize,
-    1,
-    1_000_000,
-  );
-  const maxBatchSize = boundedInteger(
-    'maxBatchSize',
-    options.maxBatchSize ?? DEFAULTS.maxBatchSize,
-    1,
-    MAX_BATCH_EVENTS,
-  );
-  const flushIntervalMs = boundedInteger(
-    'flushIntervalMs',
-    options.flushIntervalMs ?? DEFAULTS.flushIntervalMs,
-    1,
-    60 * 60 * 1000,
-  );
-  const requestTimeoutMs = boundedInteger(
-    'requestTimeoutMs',
-    options.requestTimeoutMs ?? DEFAULTS.requestTimeoutMs,
-    1,
-    60_000,
-  );
-  const maxRetries = boundedInteger('maxRetries', options.maxRetries ?? DEFAULTS.maxRetries, 0, 10);
-  const retryBackoffMs = boundedInteger(
-    'retryBackoffMs',
-    options.retryBackoffMs ?? DEFAULTS.retryBackoffMs,
-    0,
-    60_000,
-  );
-  const fetchFn = options.fetch;
-  const now = options.now ?? (() => Date.now());
-  const uuid = options.randomUUID ?? randomUUID;
-  const defaultRelease = normalizeRelease(options.release);
-  const environment = normalizeEnvironment(options.environment);
   const runtime = options.runtime ?? 'node';
   if (runtime !== 'node' && runtime !== 'worker') {
     throw new Error('@saas-maker/app-health: runtime must be `node` or `worker`');
   }
+  const opts = { ...DEFAULTS, ...options };
+  return {
+    endpointUrl: endpoint,
+    maxQueueSize: boundedInteger('maxQueueSize', opts.maxQueueSize, 1, 1_000_000),
+    maxBatchSize: boundedInteger('maxBatchSize', opts.maxBatchSize, 1, MAX_BATCH_EVENTS),
+    flushIntervalMs: boundedInteger('flushIntervalMs', opts.flushIntervalMs, 1, 60 * 60 * 1000),
+    requestTimeoutMs: boundedInteger('requestTimeoutMs', opts.requestTimeoutMs, 1, 60_000),
+    maxRetries: boundedInteger('maxRetries', opts.maxRetries, 0, 10),
+    retryBackoffMs: boundedInteger('retryBackoffMs', opts.retryBackoffMs, 0, 60_000),
+    fetchFn: options.fetch,
+    now: options.now ?? (() => Date.now()),
+    uuid: options.randomUUID ?? randomUUID,
+    defaultRelease: normalizeRelease(options.release),
+    environment: normalizeEnvironment(options.environment),
+    runtime,
+  };
+}
+
+export function createAppHealthClient(options: AppHealthClientOptions): AppHealthClient {
+  const {
+    endpointUrl,
+    maxQueueSize,
+    maxBatchSize,
+    flushIntervalMs,
+    requestTimeoutMs,
+    maxRetries,
+    retryBackoffMs,
+    fetchFn,
+    now,
+    uuid,
+    defaultRelease,
+    environment,
+    runtime,
+  } = resolveClientConfig(options);
 
   const diag = createDiagnostics();
   const queue: EventV1[] = [];

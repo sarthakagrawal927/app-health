@@ -185,7 +185,17 @@ var (
 	environmentPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
-// ValidateEvent validates a single EventV1 against V0 bounds.
+func validateRelease(release *string) error {
+	if release == nil {
+		return nil
+	}
+	r := strings.TrimSpace(*release)
+	if len(r) == 0 || len(r) > MaxReleaseLength {
+		return fmt.Errorf("release: must be 1..%d chars", MaxReleaseLength)
+	}
+	return nil
+}
+
 func ValidateEvent(e EventV1) error {
 	if !uuidV4Pattern.MatchString(e.EventID) {
 		return fmt.Errorf("event_id: not a uuid v4")
@@ -206,13 +216,7 @@ func ValidateEvent(e EventV1) error {
 	if e.DurationMs < 0 || e.DurationMs > MaxDurationMs {
 		return fmt.Errorf("duration_ms: must be 0..%d", MaxDurationMs)
 	}
-	if e.Release != nil {
-		r := strings.TrimSpace(*e.Release)
-		if len(r) == 0 || len(r) > MaxReleaseLength {
-			return fmt.Errorf("release: must be 1..%d chars", MaxReleaseLength)
-		}
-	}
-	return nil
+	return validateRelease(e.Release)
 }
 
 // ValidateBatch validates a V1 batch and normalizes runtime/method casing.
