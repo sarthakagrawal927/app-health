@@ -6,7 +6,13 @@
 // a timer or size threshold and during `flush()`/`close()`. The application
 // response never awaits ingest.
 
-import { MAX_BATCH_EVENTS, SCHEMA_VERSION, type EventV1 } from './contracts.js';
+import {
+  MAX_BATCH_EVENTS,
+  SCHEMA_VERSION,
+  type EventBatchV1,
+  type EventV1,
+  type RuntimeField,
+} from './contracts.js';
 import { createDiagnostics, type AppHealthDiagnostics } from './diagnostics.js';
 import {
   normalizeDuration,
@@ -171,29 +177,19 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
 
   function record(event: EventInput): void {
     if (closed) return;
-    const method = normalizeMethod(event.method);
-    const route = normalizeRoutePath(event.route);
-    const status = normalizeStatus(event.status_code);
-    const duration = normalizeDuration(event.duration_ms);
-    if (method === null || route === null || status === null || duration === null) {
+    const v1Event = buildEventV1(event, {
+      now,
+      uuid,
+      defaultRelease,
+    });
+    if (v1Event === null) {
       diag.increment('droppedInvalid');
       return;
     }
-    const release = normalizeRelease(event.release) ?? defaultRelease;
-    const timestamp = normalizeTimestamp(event.timestamp) ?? now();
     if (queue.length >= maxQueueSize) {
       diag.increment('droppedOverflow');
       return;
     }
-    const v1Event: EventV1 = {
-      event_id: uuid(),
-      timestamp,
-      method,
-      route,
-      status_code: status,
-      duration_ms: duration,
-      ...(release !== undefined ? { release } : {}),
-    };
     queue.push(v1Event);
     diag.setQueued(queue.length);
     scheduleFlush();
@@ -232,14 +228,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
 
   async function deliver(events: EventV1[]): Promise<void> {
     if (events.length === 0) return;
-    const batch = {
-      batch_id: uuid(),
-      schema_version: SCHEMA_VERSION,
-      runtime,
-      ...(environment !== undefined ? { environment } : {}),
-      ...(defaultRelease !== undefined ? { release: defaultRelease } : {}),
-      events,
-    };
+    const batch = buildBatch(events, uuid, runtime, environment, defaultRelease);
     const result: TransportResult = await sendBatch(batch, {
       endpoint: endpointUrl,
       key: options.key,
@@ -248,21 +237,7 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
       retryBackoffMs,
       ...(fetchFn ? { fetch: fetchFn } : {}),
     });
-    if (result.ok) {
-      diag.increment('sentBatches');
-      diag.increment('sentEvents', events.length);
-      if (result.retried > 0) diag.increment('retriedBatches');
-      diag.setLastError(null);
-    } else {
-      diag.increment('failedBatches');
-      if (result.retried > 0) diag.increment('retriedBatches');
-      // Transport-level retries are already exhausted. Drop the batch to keep
-      // the queue bounded and the flush loop terminating; record the loss in
-      // diagnostics. Requeuing would risk an unbounded loop on persistent
-      // outages and would defeat the fail-open guarantee.
-      diag.increment('droppedDelivery', events.length);
-      diag.setLastError(result.error);
-    }
+    recordDeliveryResult(result, events, diag);
   }
 
   function close(): Promise<void> {
@@ -282,6 +257,69 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
     close,
     diagnostics: () => diag.snapshot(),
   };
+}
+
+function buildEventV1(
+  event: EventInput,
+  ctx: { now: () => number; uuid: () => string; defaultRelease: string | undefined },
+): EventV1 | null {
+  const method = normalizeMethod(event.method);
+  const route = normalizeRoutePath(event.route);
+  const status = normalizeStatus(event.status_code);
+  const duration = normalizeDuration(event.duration_ms);
+  if (method === null || route === null || status === null || duration === null) {
+    return null;
+  }
+  const release = normalizeRelease(event.release) ?? ctx.defaultRelease;
+  const timestamp = normalizeTimestamp(event.timestamp) ?? ctx.now();
+  return {
+    event_id: ctx.uuid(),
+    timestamp,
+    method,
+    route,
+    status_code: status,
+    duration_ms: duration,
+    ...(release !== undefined ? { release } : {}),
+  };
+}
+
+function buildBatch(
+  events: EventV1[],
+  uuid: () => string,
+  runtime: string,
+  environment: string | undefined,
+  defaultRelease: string | undefined,
+): EventBatchV1 {
+  return {
+    batch_id: uuid(),
+    schema_version: SCHEMA_VERSION,
+    runtime: runtime as RuntimeField,
+    ...(environment !== undefined ? { environment } : {}),
+    ...(defaultRelease !== undefined ? { release: defaultRelease } : {}),
+    events,
+  };
+}
+
+function recordDeliveryResult(
+  result: TransportResult,
+  events: EventV1[],
+  diag: ReturnType<typeof createDiagnostics>,
+) {
+  if (result.ok) {
+    diag.increment('sentBatches');
+    diag.increment('sentEvents', events.length);
+    if (result.retried > 0) diag.increment('retriedBatches');
+    diag.setLastError(null);
+  } else {
+    diag.increment('failedBatches');
+    if (result.retried > 0) diag.increment('retriedBatches');
+    // Transport-level retries are already exhausted. Drop the batch to keep
+    // the queue bounded and the flush loop terminating; record the loss in
+    // diagnostics. Requeuing would risk an unbounded loop on persistent
+    // outages and would defeat the fail-open guarantee.
+    diag.increment('droppedDelivery', events.length);
+    diag.setLastError(result.error);
+  }
 }
 
 function normalizeEnvironment(value: unknown): string | undefined {
