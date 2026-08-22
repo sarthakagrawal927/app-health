@@ -71,6 +71,116 @@ describe('public agent surfaces', () => {
     expect((await catalog.json()) as { name: string }).toMatchObject({ name: 'App Health' });
   });
 
+  it('serves the OpenAPI spec and advertises it from the catalog', async () => {
+    const spec = await call(
+      'GET',
+      '/openapi.json',
+      NON_LOCAL_ENV,
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect(spec.status).toBe(200);
+    expect(spec.headers.get('content-type')).toContain('application/json');
+    const document = (await spec.json()) as {
+      openapi: string;
+      info: { title: string };
+      paths: Record<string, unknown>;
+    };
+    expect(document.openapi).toBe('3.1.0');
+    expect(document.info.title).toBe('App Health public API');
+    // Every surface the catalog advertises has to be described, or the spec is a lie.
+    expect(Object.keys(document.paths).sort()).toEqual([
+      '/api/ai',
+      '/llms-full.txt',
+      '/llms.txt',
+      '/openapi.json',
+      '/sitemap.xml',
+    ]);
+
+    const catalog = await call(
+      'GET',
+      '/api/ai',
+      NON_LOCAL_ENV,
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect((await catalog.json()) as { openapi: string }).toMatchObject({
+      openapi: 'https://health.sassmaker.com/openapi.json',
+    });
+  });
+
+  it('rebinds the OpenAPI catalog link to the requesting origin', async () => {
+    const catalog = await call(
+      'GET',
+      '/api/ai',
+      NON_LOCAL_ENV,
+      undefined,
+      undefined,
+      'https://app-health.pages.dev',
+    );
+    expect((await catalog.json()) as { openapi: string }).toMatchObject({
+      openapi: 'https://app-health.pages.dev/openapi.json',
+    });
+  });
+
+  it('answers unknown /api paths with JSON rather than an HTML shell', async () => {
+    const response = await call(
+      'GET',
+      '/api/does-not-exist',
+      NON_LOCAL_ENV,
+      undefined,
+      undefined,
+      'https://health.sassmaker.com',
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect((await response.json()) as { error: unknown }).toEqual({
+      error: {
+        code: 'not_found',
+        message: 'Unknown API path: /api/does-not-exist',
+        path: '/api/does-not-exist',
+      },
+    });
+  });
+
+  it('negotiates markdown on the homepage and varies on Accept', async () => {
+    const response = await call(
+      'GET',
+      '/',
+      NON_LOCAL_ENV,
+      undefined,
+      { accept: 'text/markdown' },
+      'https://health.sassmaker.com',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/markdown');
+    expect(response.headers.get('vary')).toBe('Accept, Accept-Encoding');
+  });
+
+  it('serves every catalogued machine surface', async () => {
+    const cases = [
+      ['/llms-full.txt', 'text/plain', /^# App Health — full agent brief/],
+      ['/index.md', 'text/markdown', /^# App Health/],
+      ['/openapi.yaml', 'application/json', /"openapi": "3\.1\.0"/],
+    ] as const;
+    for (const [path, contentType, body] of cases) {
+      const response = await call(
+        'GET',
+        path,
+        NON_LOCAL_ENV,
+        undefined,
+        undefined,
+        'https://health.sassmaker.com',
+      );
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get('content-type'), path).toContain(contentType);
+      expect(await response.text(), path).toMatch(body);
+    }
+  });
+
   it('does not expose product discovery on the ingest hostname', async () => {
     const response = await call(
       'GET',

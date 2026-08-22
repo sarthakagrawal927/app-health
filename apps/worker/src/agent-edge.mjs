@@ -18,7 +18,7 @@ const AGENT_SURFACE = {
   llmsFullTxt:
     '# App Health — full agent brief\n\nPrivacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.\n\n## Index\n\n# App Health\n\nPrivacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.\n\n## Public boundary\n\n- Aggregate endpoint latency, status, and availability summaries\n- No request bodies, headers, cookies, query values, identities, logs, or stack traces\n- Owner APIs remain authenticated and are not agent-indexed\n\n## Agent entrypoints\n\n- https://health.sassmaker.com/llms.txt\n- https://health.sassmaker.com/api/ai\n- https://health.sassmaker.com/index.md\n\n## Product links\n\n- Home: https://health.sassmaker.com/ — Endpoint health dashboard\n- Changelog: https://health.sassmaker.com/changelog — Verified product releases\n\n## Machine surfaces\n\n- https://health.sassmaker.com/llms.txt\n- https://health.sassmaker.com/llms-full.txt\n- https://health.sassmaker.com/api/ai\n- https://health.sassmaker.com/index.md\n- https://health.sassmaker.com/sitemap.xml\n- https://health.sassmaker.com/robots.txt\n\n## Contact\n\n- Owner: https://sarthakagrawal.dev\n- Agent email for directory verification: sarthakagrawal@agentmail.to\n',
   llmsTxt:
-    '# App Health\n\n> Privacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.\n\n## Product\n\n- [Home](https://health.sassmaker.com/): Endpoint health dashboard\n- [Changelog](https://health.sassmaker.com/changelog): Verified product releases\n\n## Machine surfaces\n\n- [Agent catalog](https://health.sassmaker.com/api/ai): JSON inventory of public surfaces\n- [Homepage markdown](https://health.sassmaker.com/index.md): Product brief without JS\n- [This index](https://health.sassmaker.com/llms.txt)\n',
+    '# App Health\n\n> Privacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.\n\n## Product\n\n- [Home](https://health.sassmaker.com/): Endpoint health dashboard\n- [Changelog](https://health.sassmaker.com/changelog): Verified product releases\n\n## Machine surfaces\n\n- [Agent catalog](https://health.sassmaker.com/api/ai): JSON inventory of public surfaces\n- [OpenAPI spec](https://health.sassmaker.com/openapi.json): Machine-readable API description\n- [Homepage markdown](https://health.sassmaker.com/index.md): Product brief without JS\n- [This index](https://health.sassmaker.com/llms.txt)\n\n## When to use this\n\n- Monitoring endpoint health and availability for Node, Go, Cloudflare, or OpenTelemetry services\n- Checking aggregate latency, status codes, and uptime summaries (privacy-first, no PII)\n- Integrating a lightweight health-check SDK into a service for endpoint tracking\n- Reviewing verified product releases and changelog history\n',
   indexMd:
     '# App Health\n\nPrivacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.\n\n## Public boundary\n\n- Aggregate endpoint latency, status, and availability summaries\n- No request bodies, headers, cookies, query values, identities, logs, or stack traces\n- Owner APIs remain authenticated and are not agent-indexed\n\n## Agent entrypoints\n\n- https://health.sassmaker.com/llms.txt\n- https://health.sassmaker.com/api/ai\n- https://health.sassmaker.com/index.md\n',
   catalog: {
@@ -29,6 +29,7 @@ const AGENT_SURFACE = {
     llmsFull: 'https://health.sassmaker.com/llms-full.txt',
     sitemap: 'https://health.sassmaker.com/sitemap.xml',
     robots: 'https://health.sassmaker.com/robots.txt',
+    openapi: 'https://health.sassmaker.com/openapi.json',
     markdown: {
       suffix: '.md',
       negotiation: true,
@@ -56,6 +57,162 @@ const AGENT_SURFACE = {
   },
 };
 
+const OPENAPI_SPEC = {
+  openapi: '3.1.0',
+  info: {
+    title: 'App Health public API',
+    version: '1.0.0',
+    description:
+      'Privacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services. The public web API exposes read-only agent surfaces: the agent catalog, llms.txt, sitemap, and markdown alternates.',
+    contact: { name: 'App Health', url: 'https://health.sassmaker.com' },
+  },
+  servers: [{ url: 'https://health.sassmaker.com' }],
+  tags: [{ name: 'agent-surfaces', description: 'Machine-readable public surfaces' }],
+  paths: {
+    '/api/ai': {
+      get: {
+        operationId: 'getAgentCatalog',
+        tags: ['agent-surfaces'],
+        summary: 'Agent catalog',
+        description: 'JSON inventory of public agent surfaces.',
+        responses: {
+          200: {
+            description: 'Agent catalog',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/AgentCatalog' } },
+            },
+          },
+        },
+      },
+    },
+    '/llms.txt': {
+      get: {
+        operationId: 'getLlmsTxt',
+        tags: ['agent-surfaces'],
+        summary: 'llms.txt index',
+        responses: { 200: { description: 'Markdown index', content: { 'text/plain': {} } } },
+      },
+    },
+    '/llms-full.txt': {
+      get: {
+        operationId: 'getLlmsFullTxt',
+        tags: ['agent-surfaces'],
+        summary: 'Full agent brief',
+        responses: { 200: { description: 'Markdown brief', content: { 'text/plain': {} } } },
+      },
+    },
+    '/sitemap.xml': {
+      get: {
+        operationId: 'getSitemap',
+        tags: ['agent-surfaces'],
+        summary: 'Sitemap',
+        responses: { 200: { description: 'XML sitemap', content: { 'application/xml': {} } } },
+      },
+    },
+    '/openapi.json': {
+      get: {
+        operationId: 'getOpenApiSpec',
+        tags: ['agent-surfaces'],
+        summary: 'OpenAPI specification',
+        description: 'This document.',
+        responses: {
+          200: { description: 'OpenAPI 3.1 spec', content: { 'application/json': {} } },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      AgentCatalog: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          version: { type: 'string' },
+          url: { type: 'string', format: 'uri' },
+          llms: { type: 'string', format: 'uri' },
+          llmsFull: { type: 'string', format: 'uri' },
+          sitemap: { type: 'string', format: 'uri' },
+          robots: { type: 'string', format: 'uri' },
+          openapi: { type: 'string', format: 'uri' },
+          markdown: {
+            type: 'object',
+            properties: { suffix: { type: 'string' }, negotiation: { type: 'boolean' } },
+          },
+        },
+      },
+    },
+  },
+};
+
+function jsonError(status, code, message, path) {
+  return new Response(JSON.stringify({ error: { code, message, path } }), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+    },
+  });
+}
+
+/** @returns {Response} */
+function openApiResponse() {
+  return new Response(JSON.stringify(OPENAPI_SPEC, null, 2), {
+    status: 200,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'access-control-allow-origin': '*',
+      'cache-control': 'public, max-age=3600',
+    },
+  });
+}
+
+/**
+ * Re-bind the catalog to the requesting origin so preview and custom domains stay correct.
+ * @param {URL} url
+ * @returns {Response}
+ */
+function catalogResponse(url) {
+  const rebind = (value) => (value ? String(value).replace(AGENT_SURFACE.url, url.origin) : value);
+  return json({
+    ...AGENT_SURFACE.catalog,
+    url: url.origin,
+    llms: `${url.origin}/llms.txt`,
+    llmsFull: `${url.origin}/llms-full.txt`,
+    sitemap: rebind(AGENT_SURFACE.catalog.sitemap) || `${url.origin}/sitemap.xml`,
+    openapi: `${url.origin}/openapi.json`,
+    surfaces: (AGENT_SURFACE.catalog.surfaces || []).map((surface) => ({
+      ...surface,
+      url: rebind(surface.url),
+      md: rebind(surface.md),
+    })),
+  });
+}
+
+/** @returns {Response} */
+function homepageMarkdownResponse() {
+  return text(AGENT_SURFACE.indexMd, 'text/markdown; charset=utf-8', {
+    Link: '</index.md>; rel="alternate"; type="text/markdown"',
+    Vary: 'Accept, Accept-Encoding',
+  });
+}
+
+/**
+ * Exact-path surfaces. Each entry is a thunk so nothing is built until its path is asked for.
+ * Keeping them in a table rather than an if-chain is what holds handleAgentEdge's
+ * cyclomatic complexity inside the repo's code-health ceiling.
+ * @type {Record<string, (url: URL) => Response | null>}
+ */
+const AGENT_ROUTES = {
+  '/openapi.json': openApiResponse,
+  '/openapi.yaml': openApiResponse,
+  '/llms.txt': () => text(AGENT_SURFACE.llmsTxt, 'text/plain; charset=utf-8'),
+  '/llms-full.txt': () =>
+    AGENT_SURFACE.llmsFullTxt ? text(AGENT_SURFACE.llmsFullTxt, 'text/plain; charset=utf-8') : null,
+  '/index.md': () => text(AGENT_SURFACE.indexMd, 'text/markdown; charset=utf-8'),
+  '/api/ai': (url) => catalogResponse(url),
+};
+
 /**
  * @param {Request} request
  * @returns {Response | null}
@@ -63,43 +220,18 @@ const AGENT_SURFACE = {
 export function handleAgentEdge(request) {
   if (request.method !== 'GET' && request.method !== 'HEAD') return null;
   const url = new URL(request.url);
-  const path = url.pathname === '' ? '/' : url.pathname;
+  const path = url.pathname || '/';
 
-  if (path === '/llms.txt') {
-    return text(AGENT_SURFACE.llmsTxt, 'text/plain; charset=utf-8');
-  }
-  if (path === '/llms-full.txt' && AGENT_SURFACE.llmsFullTxt) {
-    return text(AGENT_SURFACE.llmsFullTxt, 'text/plain; charset=utf-8');
-  }
-  if (path === '/index.md') {
-    return text(AGENT_SURFACE.indexMd, 'text/markdown; charset=utf-8');
-  }
-  if (path === '/api/ai') {
-    // Re-bind origin so preview/custom domains stay correct
-    const catalog = {
-      ...AGENT_SURFACE.catalog,
-      url: url.origin,
-      llms: `${url.origin}/llms.txt`,
-      llmsFull: `${url.origin}/llms-full.txt`,
-      sitemap: AGENT_SURFACE.catalog.sitemap
-        ? String(AGENT_SURFACE.catalog.sitemap).replace(AGENT_SURFACE.url, url.origin)
-        : `${url.origin}/sitemap.xml`,
-      surfaces: (AGENT_SURFACE.catalog.surfaces || []).map((s) => ({
-        ...s,
-        url: s.url ? String(s.url).replace(AGENT_SURFACE.url, url.origin) : s.url,
-        md: s.md ? String(s.md).replace(AGENT_SURFACE.url, url.origin) : s.md,
-      })),
-    };
-    return json(catalog);
+  const route = AGENT_ROUTES[path];
+  if (route) return route(url);
+
+  // Unknown API paths answer in JSON, never the HTML app shell.
+  if (path.startsWith('/api/')) {
+    return jsonError(404, 'not_found', `Unknown API path: ${path}`, path);
   }
 
   // Homepage markdown negotiation
-  if ((path === '/' || path === '') && wantsMarkdown(request)) {
-    return text(AGENT_SURFACE.indexMd, 'text/markdown; charset=utf-8', {
-      Link: '</index.md>; rel="alternate"; type="text/markdown"',
-      Vary: 'Accept',
-    });
-  }
+  if (path === '/' && wantsMarkdown(request)) return homepageMarkdownResponse();
 
   return null;
 }
