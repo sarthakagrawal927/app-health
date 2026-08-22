@@ -503,6 +503,32 @@ describe('App Health V0 UI', () => {
     expect(await screen.findByText('Ingest key revoked')).toBeTruthy();
   });
 
+  it('explains the error installation state', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    installFetch({
+      status: {
+        state: 'error',
+        first_seen: null,
+        last_seen: null,
+        next_action: 'Retry.',
+      },
+      endpointRows: [],
+    });
+    render(<App />);
+    expect(await screen.findByText('Installation check unavailable')).toBeTruthy();
+    expect(screen.getByText(/could not verify this installation/i)).toBeTruthy();
+  });
+
+  it('identifies connected traffic without a runtime label', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+    installFetch({
+      status: { ...connected, runtime: undefined },
+    });
+    render(<App />);
+    expect(await screen.findByText('SDK connected')).toBeTruthy();
+    expect(screen.getByText('Endpoint summaries are arriving.')).toBeTruthy();
+  });
+
   it('shows an actionable API failure without hiding the app shell', async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
     installFetch({ fail: true });

@@ -17,6 +17,7 @@ import {
   type FailureQueryResponseV1,
   type InstallationStatusV1,
   type ListAppsResponseV1,
+  type Runtime,
   type Window,
 } from '@app-health/contracts';
 
@@ -107,6 +108,14 @@ function authorizedProject(
   );
 }
 
+function sortValue(endpoint: EndpointAggregateV1, key: SortKey): number {
+  if (key === 'health') return healthWeight[endpoint.health_state];
+  if (key === 'requests') return endpoint.request_count;
+  if (key === 'p95') return endpoint.p95_ms;
+  if (key === 'error_rate') return endpoint.error_rate;
+  return endpoint.last_seen ?? 0;
+}
+
 export function sortEndpoints(
   endpoints: EndpointAggregateV1[],
   key: SortKey,
@@ -119,26 +128,8 @@ export function sortEndpoints(
       if (key !== 'last_seen' && a.endpoint.metrics_available !== b.endpoint.metrics_available) {
         return a.endpoint.metrics_available === false ? 1 : -1;
       }
-      const av =
-        key === 'health'
-          ? healthWeight[a.endpoint.health_state]
-          : key === 'requests'
-            ? a.endpoint.request_count
-            : key === 'p95'
-              ? a.endpoint.p95_ms
-              : key === 'error_rate'
-                ? a.endpoint.error_rate
-                : (a.endpoint.last_seen ?? 0);
-      const bv =
-        key === 'health'
-          ? healthWeight[b.endpoint.health_state]
-          : key === 'requests'
-            ? b.endpoint.request_count
-            : key === 'p95'
-              ? b.endpoint.p95_ms
-              : key === 'error_rate'
-                ? b.endpoint.error_rate
-                : (b.endpoint.last_seen ?? 0);
+      const av = sortValue(a.endpoint, key);
+      const bv = sortValue(b.endpoint, key);
       return av === bv ? a.index - b.index : (av - bv) * factor;
     })
     .map(({ endpoint }) => endpoint);
@@ -441,43 +432,60 @@ function KeySetup({
   );
 }
 
-function StatusBanner({ status }: { status: InstallationStatusV1 }): JSX.Element {
-  const copy = {
-    waiting: [
+function connectedTitle(runtime: Runtime | undefined): string {
+  if (runtime === 'otel') return 'OpenTelemetry connected';
+  if (runtime === 'worker') return 'Cloudflare Worker connected';
+  return 'SDK connected';
+}
+
+function connectedRuntimeLabel(runtime: Runtime | undefined): string {
+  if (runtime === 'node') return 'Node.js';
+  if (runtime === 'worker') return 'Cloudflare Worker';
+  if (runtime === 'go') return 'Go';
+  return 'Your OpenTelemetry pipeline';
+}
+
+function connectedMessage(runtime: Runtime | undefined): string {
+  return runtime
+    ? `${connectedRuntimeLabel(runtime)} is sending endpoint summaries.`
+    : 'Endpoint summaries are arriving.';
+}
+
+function statusBannerCopy(status: InstallationStatusV1): [string, string] {
+  if (status.state === 'waiting')
+    return [
       'Waiting for traffic',
       'Start your service and make one request. This page checks automatically.',
-    ],
-    connected: [
-      status.runtime === 'otel'
-        ? 'OpenTelemetry connected'
-        : status.runtime === 'worker'
-          ? 'Cloudflare Worker connected'
-          : 'SDK connected',
-      status.runtime
-        ? `${status.runtime === 'node' ? 'Node.js' : status.runtime === 'worker' ? 'Cloudflare Worker' : status.runtime === 'go' ? 'Go' : 'Your OpenTelemetry pipeline'} is sending endpoint summaries.`
-        : 'Endpoint summaries are arriving.',
-    ],
-    stale: [
+    ];
+  if (status.state === 'connected')
+    return [connectedTitle(status.runtime), connectedMessage(status.runtime)];
+  if (status.state === 'stale')
+    return [
       'Traffic has gone quiet',
       'This source connected before, but no recent events arrived. Check that your service is running.',
-    ],
-    revoked: [
+    ];
+  if (status.state === 'revoked')
+    return [
       'Ingest key revoked',
       'Create a fresh project key before this service can send more endpoint summaries.',
-    ],
-    error: [
-      'Installation check unavailable',
-      'The metrics API could not verify this installation. Your application remains unaffected.',
-    ],
-  }[status.state];
+    ];
+  return [
+    'Installation check unavailable',
+    'The metrics API could not verify this installation. Your application remains unaffected.',
+  ];
+}
+
+function StatusBanner({ status }: { status: InstallationStatusV1 }): JSX.Element {
+  const [title, message] = statusBannerCopy(status);
+  const bannerClass = 'status-banner status-' + status.state;
   return (
-    <section className={`status-banner status-${status.state}`} aria-live="polite">
+    <section aria-live="polite" className={bannerClass}>
       <span className="status-icon" aria-hidden="true">
         {status.state === 'connected' ? '✓' : status.state === 'waiting' ? '…' : '!'}
       </span>
       <div>
-        <strong>{copy[0]}</strong>
-        <p>{copy[1]}</p>
+        <strong>{title}</strong>
+        <p>{message}</p>
       </div>
       {status.state === 'waiting' ? <span className="checking">Checking every 10s</span> : null}
     </section>
@@ -594,6 +602,67 @@ function formatTimestamp(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
+function FailureDetail({
+  failure,
+  detailId,
+}: {
+  failure: FailureEventV1;
+  detailId: string;
+}): JSX.Element {
+  return (
+    <tr className="failure-detail-row">
+      <td colSpan={7}>
+        <div id={detailId} className="failure-detail-panel">
+          <div className="failure-detail-heading">
+            <strong>Retained failure detail</strong>
+            <span>Exact fields kept for this failed request</span>
+          </div>
+          <dl className="failure-detail-grid">
+            <div>
+              <dt>Endpoint</dt>
+              <dd>
+                <code>
+                  {failure.method} {failure.route}
+                </code>
+              </dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{failure.status_code}</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd>{failure.duration_ms.toLocaleString()} ms</dd>
+            </div>
+            <div>
+              <dt>Occurred</dt>
+              <dd>
+                <time dateTime={new Date(failure.occurred_at).toISOString()}>
+                  {formatTimestamp(failure.occurred_at)}
+                </time>
+              </dd>
+            </div>
+            <div>
+              <dt>Release</dt>
+              <dd>{failure.release ?? 'Not reported'}</dd>
+            </div>
+            <div>
+              <dt>Failure ID</dt>
+              <dd>
+                <code>{failure.failure_id}</code>
+              </dd>
+            </div>
+          </dl>
+          <p className="failure-detail-boundary">
+            No request body, headers, query values, route values, identity, logs, or stack traces
+            were collected.
+          </p>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function FailureRow({ failure }: { failure: FailureEventV1 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const detailId = `failure-detail-${failure.failure_id}`;
@@ -634,58 +703,7 @@ function FailureRow({ failure }: { failure: FailureEventV1 }): JSX.Element {
           </button>
         </td>
       </tr>
-      {expanded ? (
-        <tr className="failure-detail-row">
-          <td colSpan={7}>
-            <div id={detailId} className="failure-detail-panel">
-              <div className="failure-detail-heading">
-                <strong>Retained failure detail</strong>
-                <span>Exact fields kept for this failed request</span>
-              </div>
-              <dl className="failure-detail-grid">
-                <div>
-                  <dt>Endpoint</dt>
-                  <dd>
-                    <code>
-                      {failure.method} {failure.route}
-                    </code>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Status</dt>
-                  <dd>{failure.status_code}</dd>
-                </div>
-                <div>
-                  <dt>Duration</dt>
-                  <dd>{failure.duration_ms.toLocaleString()} ms</dd>
-                </div>
-                <div>
-                  <dt>Occurred</dt>
-                  <dd>
-                    <time dateTime={new Date(failure.occurred_at).toISOString()}>
-                      {formatTimestamp(failure.occurred_at)}
-                    </time>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Release</dt>
-                  <dd>{failure.release ?? 'Not reported'}</dd>
-                </div>
-                <div>
-                  <dt>Failure ID</dt>
-                  <dd>
-                    <code>{failure.failure_id}</code>
-                  </dd>
-                </div>
-              </dl>
-              <p className="failure-detail-boundary">
-                No request body, headers, query values, route values, identity, logs, or stack
-                traces were collected.
-              </p>
-            </div>
-          </td>
-        </tr>
-      ) : null}
+      {expanded ? <FailureDetail failure={failure} detailId={detailId} /> : null}
     </>
   );
 }
@@ -893,20 +911,22 @@ function DataReceived({
   );
 }
 
+interface DashboardHandlers {
+  onProjectChange: (project: SavedProject) => void;
+  onReset: () => void;
+  onLock: () => void;
+}
+
 function Dashboard({
   project,
   projects,
   ownerToken,
-  onProjectChange,
-  onReset,
-  onLock,
+  handlers,
 }: {
   project: SavedProject;
   projects: SavedProject[];
   ownerToken: string;
-  onProjectChange: (project: SavedProject) => void;
-  onReset: () => void;
-  onLock: () => void;
+  handlers: DashboardHandlers;
 }): JSX.Element {
   const [view, setView] = useState<DashboardView>('endpoints');
   const [windowKey, setWindowKey] = useState<Window>('15m');
@@ -996,7 +1016,7 @@ function Dashboard({
                 const selected = environments.find(
                   (candidate) => candidate.environmentId === event.target.value,
                 );
-                if (selected) onProjectChange(selected);
+                if (selected) handlers.onProjectChange(selected);
               }}
               value={project.environmentId}
             >
@@ -1007,10 +1027,14 @@ function Dashboard({
               ))}
             </select>
           </div>
-          <button className="project-reset" aria-label="Forget local project" onClick={onReset}>
+          <button
+            className="project-reset"
+            aria-label="Forget local project"
+            onClick={handlers.onReset}
+          >
             Reset
           </button>
-          <button className="lock-button" onClick={onLock}>
+          <button className="lock-button" onClick={handlers.onLock}>
             Lock
           </button>
         </div>
@@ -1310,9 +1334,7 @@ export function App(): JSX.Element {
           : [project, ...projects]
       }
       ownerToken={ownerToken}
-      onProjectChange={selectProject}
-      onReset={reset}
-      onLock={lock}
+      handlers={{ onProjectChange: selectProject, onReset: reset, onLock: lock }}
     />
   );
 }

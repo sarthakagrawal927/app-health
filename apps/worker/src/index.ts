@@ -98,13 +98,10 @@ async function resolveAdapter(env: Env): Promise<AdapterBundle | null> {
   };
 }
 
+const BEARER_PATTERN = /^Bearer\s+(.+)$/i;
+
 function extractBearerKey(request: Request): string {
-  return (
-    request.headers
-      .get('authorization')
-      ?.match(/^Bearer\s+(.+)$/i)?.[1]
-      ?.trim() ?? ''
-  );
+  return request.headers.get('authorization')?.match(BEARER_PATTERN)?.[1]?.trim() ?? '';
 }
 
 function ownerCanAccessApp(owner: { appId?: string }, appId: string): boolean {
