@@ -1,11 +1,18 @@
 # App Health
 
-> Privacy-first endpoint health for Node, Go, Cloudflare, and OpenTelemetry services.
+> A private, privacy-first endpoint-health view for developers and service operators using Node, Go, Cloudflare, or OpenTelemetry.
+
+## Purpose
+
+App Health replaces fragmented checks across error, analytics, messaging, and cloud consoles with aggregate route traffic, latency, error, and freshness summaries. It stores no request bodies, parameters, identities, logs, or stack traces.
+
+The production dashboard and ingest service are live. New evaluators should start with the install guide and verified release history; the hosted operator dashboard is private and has no public signup.
 
 ## Product
 
 - [Home](https://health.sassmaker.com/): Endpoint health dashboard
 - [Changelog](https://health.sassmaker.com/changelog): Verified product releases
+- [Install guide](https://github.com/sass-maker/app-health#install-the-sdks): Supported SDK and OpenTelemetry setup
 
 ## Machine surfaces
 

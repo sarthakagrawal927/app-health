@@ -16,14 +16,14 @@
       "url": "https://health.sassmaker.com/",
       "md": "https://health.sassmaker.com/index.md",
       "kind": "static",
-      "description": "Product home"
+      "description": "Purpose, supported runtimes, privacy boundary, current production capability summary, install guide, and private dashboard access"
     },
     {
       "id": "changelog",
       "url": "https://health.sassmaker.com/changelog",
       "md": "https://health.sassmaker.com/changelog.md",
       "kind": "static",
-      "description": "Verified product releases"
+      "description": "Verified product releases and current operational capabilities"
     }
   ],
   "auth": {

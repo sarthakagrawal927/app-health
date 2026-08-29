@@ -186,27 +186,67 @@ export function OwnerUnlock({
           </span>
           App Health
         </a>
-        <h1 id="unlock-title">Your services, at a glance.</h1>
+        <div className="unlock-eyebrow">For developers and service operators</div>
+        <h1 id="unlock-title">Private endpoint health from observed traffic.</h1>
         <p>
-          Unlock the private operator view to issue SDK keys and inspect aggregate endpoint health.
+          App Health turns one fail-open SDK or an existing OpenTelemetry feed into a focused,
+          private view of route traffic, latency, errors, and freshness.
         </p>
         <ul aria-label="Privacy guarantees">
-          <li>No request bodies or identities</li>
-          <li>No owner key stored in this browser</li>
-          <li>Aggregate route metrics only</li>
+          <li>Node, Worker, Go, and OTLP ingestion</li>
+          <li>No request bodies, parameters, or identities</li>
+          <li>15 minute to 7 day aggregate route windows</li>
         </ul>
+        <section className="unlock-proof" aria-label="Current production capabilities">
+          <header>
+            <span>Current production V0</span>
+            <span>Verified release surface</span>
+          </header>
+          <div className="unlock-proof-row">
+            <span className="proof-label">Ingest</span>
+            <strong>Node · Worker · Go · OTLP</strong>
+            <span className="proof-state proof-state--healthy">Live</span>
+          </div>
+          <div className="unlock-proof-row">
+            <span className="proof-label">Windows</span>
+            <strong>15m · 1h · 24h · 7d</strong>
+            <span className="proof-state proof-state--healthy">Available</span>
+          </div>
+          <div className="unlock-proof-row">
+            <span className="proof-label">Boundary</span>
+            <strong>Aggregate route summaries only</strong>
+            <span className="proof-state proof-state--healthy">Enforced</span>
+          </div>
+          <p>
+            The production dashboard and ingest service are live. Verify shipped capabilities in the
+            changelog and source.
+          </p>
+        </section>
+        <div className="intro-actions" aria-label="Get started">
+          <a
+            className="intro-action intro-action--primary"
+            href="https://github.com/sass-maker/app-health#install-the-sdks"
+          >
+            Read install guide <span aria-hidden="true">→</span>
+          </a>
+          <a className="intro-action intro-action--secondary" href="/changelog">
+            Verify current release
+          </a>
+        </div>
         <nav className="public-links" aria-label="Public product links">
-          <a href="/changelog">Changelog</a>
           <a href="https://github.com/sass-maker/app-health/issues">Roadmap</a>
           <a href="https://github.com/sass-maker/app-health">Source</a>
         </nav>
       </section>
       <section className="unlock-panel" aria-label="Unlock App Health">
         <div className="unlock-status">
-          <span className="signal-dot" /> Private operator access
+          <span className="signal-dot" /> For existing private deployments
         </div>
-        <h2>Unlock dashboard</h2>
-        <p>Use the owner key saved for this Cloudflare deployment.</p>
+        <h2>Open your dashboard</h2>
+        <p>
+          Enter the owner key for this Cloudflare deployment. The hosted dashboard has no public
+          signup.
+        </p>
         <form onSubmit={(event) => void submit(event)}>
           <label>
             Owner key

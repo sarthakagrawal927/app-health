@@ -7,6 +7,7 @@ packages/go
 openspec
 .codex
 .codevetter
+.fleet/evidence/**/*.html
 .github
 AGENTS.md
 PROJECT_STATUS.md

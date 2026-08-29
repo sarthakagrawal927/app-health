@@ -140,10 +140,15 @@ describe('App Health V0 UI', () => {
     const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
     expect(html).toContain('data-initial-unlock-shell');
-    expect(html).toContain('<h1 id="unlock-title">Your services, at a glance.</h1>');
-    expect(html).toContain('No request bodies or identities');
-    expect(html).toContain('No owner key stored in this browser');
-    expect(html).toContain('Aggregate route metrics only');
+    expect(html).toContain(
+      '<h1 id="unlock-title">Private endpoint health from observed traffic.</h1>',
+    );
+    expect(html).toContain('No request bodies, parameters, or identities');
+    expect(html).toContain('Current production V0');
+    expect(html).toContain('The production dashboard and ingest service are live.');
+    expect(html).toContain('Read install guide');
+    expect(html).toMatch(/The hosted dashboard has no public\s+signup\./);
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
   });
 
   it.each(PUBLIC_ENTRYPOINTS)('gives $path an exact self-canonical', (entry) => {
