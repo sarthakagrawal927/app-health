@@ -81,6 +81,10 @@ export function Changelog(): JSX.Element {
             </li>
           ))}
         </ol>
+        <p className="changelog-privacy">
+          This public changelog uses Microsoft Clarity to understand navigation and rendering. The
+          owner-key unlock and private dashboard never load it.
+        </p>
       </main>
     </div>
   );

@@ -607,6 +607,13 @@ pre {
   background: var(--green);
   content: '';
 }
+.changelog-privacy {
+  max-width: 650px;
+  margin: 32px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
 .topbar {
   height: 68px;
   display: flex;

@@ -14,6 +14,8 @@ export const PUBLIC_ENTRYPOINTS = [
   },
 ];
 
+const CLARITY_TAG = '<script async src="https://www.clarity.ms/tag/y6bveiqm8k"></script>';
+
 function replaceMeta(html, attribute, value) {
   const pattern = new RegExp(`(<meta\\s+${attribute}\\s+content=")[^"]*("\\s*\\/?>)`, 'i');
   if (!pattern.test(html)) throw new Error(`Missing metadata tag: ${attribute}`);
@@ -32,7 +34,8 @@ export function renderPublicEntrypoint(indexHtml, entry) {
     /<link rel="canonical" href="[^"]+" \/>/,
     `<link rel="canonical" href="${canonical}" />`,
   );
-  return html.replace(/<title>[^<]*<\/title>/, `<title>${entry.title}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${entry.title}</title>`);
+  return html.replace('</head>', `    ${CLARITY_TAG}\n  </head>`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

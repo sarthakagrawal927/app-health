@@ -58,4 +58,12 @@ describe('sitemap / canonical parity', () => {
     const canonicalMatch = indexHtml.match(/<link rel="canonical" href="([^"]+)" \/>/);
     expect(canonicalMatch?.[1]).toBe(`${SITE_ORIGIN}/`);
   });
+
+  it('loads Clarity only in generated public entrypoints', () => {
+    const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+    const changelogHtml = renderPublicEntrypoint(indexHtml, PUBLIC_ENTRYPOINTS[0]);
+
+    expect(indexHtml).not.toContain('clarity.ms/tag');
+    expect(changelogHtml).toContain('https://www.clarity.ms/tag/');
+  });
 });
