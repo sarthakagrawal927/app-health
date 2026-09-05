@@ -13,3 +13,14 @@ when the page is hiding.
 Use the SDK (`appHealth.log()` on servers, `createWebLogger` from
 `@saas-maker/app-health/web` in bundled frontends) when the app already
 installs the package. Wiring guide and decisions: [docs/logs.md](../../docs/logs.md).
+
+## Plain-JS site snippet
+
+`app-health-log.template.js` is what the fleet sites actually ship: a
+self-contained script (no bundler, no TypeScript) placed at
+`public/app-health-log.js` and referenced once from the shared head as
+`<script src="/app-health-log.js" defer></script>`. Replace `__PUBLIC_KEY__`
+with the site's public key. It auto-logs `form.submitted`, `[data-log]` clicks,
+and `client.error`, and exposes `window.appHealthLog(event, options)`.
+Self-hosting keeps it inside `script-src 'self'`; add
+`https://ingest.sassmaker.com` to `connect-src` where a CSP exists.
