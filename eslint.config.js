@@ -36,4 +36,20 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['examples/dropin-log-client/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: {
+        crypto: 'readonly',
+        document: 'readonly',
+        navigator: 'readonly',
+        Blob: 'readonly',
+        fetch: 'readonly',
+        window: 'readonly',
+        location: 'readonly',
+      },
+    },
+  },
 );
