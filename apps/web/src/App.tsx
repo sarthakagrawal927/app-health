@@ -29,6 +29,7 @@ import {
   type Runtime,
   type Window,
 } from '@app-health/contracts';
+import { GitHubIcon } from './GitHubIcon';
 
 const API_BASE = (import.meta.env.VITE_APP_HEALTH_API as string | undefined) ?? '';
 const INGEST_ORIGIN =
@@ -251,7 +252,15 @@ export function OwnerUnlock({
         </div>
         <nav className="public-links" aria-label="Public product links">
           <a href="https://github.com/sass-maker/app-health/issues">Roadmap</a>
-          <a href="https://github.com/sass-maker/app-health">Source</a>
+          <a
+            href="https://github.com/sass-maker/app-health"
+            aria-label="GitHub repository"
+            title="GitHub repository"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <GitHubIcon />
+          </a>
         </nav>
       </section>
       <section className="unlock-panel" aria-label="Unlock App Health">
@@ -952,10 +961,12 @@ function DataReceived({
         Contract v1 is enforced by the ingest validator.{' '}
         <a
           href="https://github.com/sass-maker/app-health/blob/main/packages/contracts/src/event.ts"
+          aria-label="Inspect the source contract"
+          title="Inspect the source contract"
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
         >
-          Inspect the source contract
+          <GitHubIcon />
         </a>
         . Raw ingest keys are shown once; only a non-reversible verifier is stored. Batch IDs stop
         participating in deduplication after one hour. Failure rows stop being queryable after 24

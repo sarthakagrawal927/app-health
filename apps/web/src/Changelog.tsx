@@ -1,3 +1,5 @@
+import { GitHubIcon } from './GitHubIcon';
+
 const entries = [
   {
     date: '2026-07-27',
@@ -53,7 +55,15 @@ export function Changelog(): JSX.Element {
         <Brand />
         <nav aria-label="Product links">
           <a href="https://github.com/sass-maker/app-health/issues">Roadmap</a>
-          <a href="https://github.com/sass-maker/app-health">Source</a>
+          <a
+            href="https://github.com/sass-maker/app-health"
+            aria-label="GitHub repository"
+            title="GitHub repository"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <GitHubIcon />
+          </a>
           <a className="changelog-dashboard-link" href="/">
             Dashboard
           </a>
