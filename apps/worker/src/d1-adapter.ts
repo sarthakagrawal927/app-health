@@ -7,8 +7,11 @@ import type {
   EventV1,
   FailureEventV1,
   LogEventV1,
+  LogSource,
+  PublicLogKeyV1,
+  StoredLogV1,
 } from '@app-health/contracts';
-import { LOG_LEVELS } from '@app-health/contracts';
+import { LOG_LEVELS, PUBLIC_LOG_KEY_PREFIX } from '@app-health/contracts';
 import { generateRawKey, hashKey } from './crypto.js';
 import type {
   AppHealthRepositories,
@@ -19,6 +22,7 @@ import type {
   FailureRepository,
   LogListQuery,
   LogRepository,
+  PublicLogKeyRepository,
   EnvironmentRepository,
   InstallationRepository,
   KeyRepository,
@@ -59,6 +63,7 @@ export class D1ControlPlane
     EndpointInventoryRepository,
     FailureRepository,
     LogRepository,
+    PublicLogKeyRepository,
     SetupRepository
 {
   constructor(private readonly db: D1DatabaseLike) {}
@@ -73,6 +78,7 @@ export class D1ControlPlane
       inventory: this,
       failures: this,
       logs: this,
+      publicKeys: this,
       buckets,
       setup: this,
     };
@@ -399,13 +405,18 @@ export class D1ControlPlane
     ).results;
   }
 
-  async recordLogs(appId: string, envId: string, logs: readonly LogEventV1[]): Promise<void> {
+  async recordLogs(
+    appId: string,
+    envId: string,
+    logs: readonly LogEventV1[],
+    source: LogSource,
+  ): Promise<void> {
     if (logs.length === 0) return;
     const results = await this.db.batch(
       logs.map((log) =>
         this.db
           .prepare(
-            'INSERT OR IGNORE INTO log_events (log_id, app_id, environment_id, timestamp, event, level, title, description, icon, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT OR IGNORE INTO log_events (log_id, app_id, environment_id, timestamp, event, level, title, description, icon, props, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           )
           .bind(
             log.log_id,
@@ -418,15 +429,20 @@ export class D1ControlPlane
             log.description ?? null,
             log.icon ?? null,
             JSON.stringify(log.props),
+            source,
           ),
       ),
     );
     if (results.some((result) => !result.success)) throw new Error('D1 log insert failed');
   }
-  async listLogs(appId: string, envId: string, query: LogListQuery): Promise<LogEventV1[]> {
+  async listLogs(appId: string, envId: string, query: LogListQuery): Promise<StoredLogV1[]> {
     const levels = LOG_LEVELS.slice(LOG_LEVELS.indexOf(query.minLevel));
     const binds: unknown[] = [appId, envId, ...levels];
     let where = `app_id = ? AND environment_id = ? AND level IN (${levels.map(() => '?').join(', ')})`;
+    if (query.source !== undefined) {
+      where += ' AND source = ?';
+      binds.push(query.source);
+    }
     if (query.event !== undefined) {
       where += ' AND event = ?';
       binds.push(query.event);
@@ -435,12 +451,83 @@ export class D1ControlPlane
     const rows = (
       await this.db
         .prepare(
-          `SELECT log_id, timestamp, event, level, title, description, icon, props FROM log_events WHERE ${where} ORDER BY timestamp DESC, log_id DESC LIMIT ?`,
+          `SELECT log_id, timestamp, event, level, title, description, icon, props, source FROM log_events WHERE ${where} ORDER BY timestamp DESC, log_id DESC LIMIT ?`,
         )
         .bind(...binds)
         .all<LogRow>()
     ).results;
     return rows.map(logFromRow);
+  }
+  async createPublicKey(
+    appId: string,
+    envId: string,
+    allowedOrigins: readonly string[],
+    now: number,
+  ): Promise<{ record: PublicLogKeyV1; rawKey: string }> {
+    const rawKey = generateRawKey(PUBLIC_LOG_KEY_PREFIX);
+    const record: PublicLogKeyV1 = {
+      id: id('pubkey'),
+      app_id: appId,
+      environment_id: envId,
+      allowed_origins: [...allowedOrigins],
+      created_at: now,
+      revoked_at: null,
+    };
+    await this.db
+      .prepare(
+        'INSERT INTO public_log_keys (id, app_id, environment_id, verifier_hash, allowed_origins, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)',
+      )
+      .bind(
+        record.id,
+        appId,
+        envId,
+        await hashKey(rawKey),
+        JSON.stringify(record.allowed_origins),
+        now,
+      )
+      .run();
+    return { record, rawKey };
+  }
+  async verifyPublicKey(rawKey: string): Promise<PublicLogKeyV1 | null> {
+    const row = await this.db
+      .prepare(
+        'SELECT id, app_id, environment_id, allowed_origins, created_at, revoked_at FROM public_log_keys WHERE verifier_hash = ? AND revoked_at IS NULL LIMIT 1',
+      )
+      .bind(await hashKey(rawKey))
+      .first<PublicKeyRow>();
+    return row ? publicKeyFromRow(row) : null;
+  }
+  async listPublicKeys(appId: string): Promise<PublicLogKeyV1[]> {
+    const { results } = await this.db
+      .prepare(
+        'SELECT id, app_id, environment_id, allowed_origins, created_at, revoked_at FROM public_log_keys WHERE app_id = ? ORDER BY created_at DESC',
+      )
+      .bind(appId)
+      .all<PublicKeyRow>();
+    return results.map(publicKeyFromRow);
+  }
+  async revokePublicKey(keyId: string, now: number): Promise<boolean> {
+    const result = await this.db
+      .prepare('UPDATE public_log_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
+      .bind(now, keyId)
+      .run();
+    return (result.meta.changes ?? 0) > 0;
+  }
+  async consumeBrowserQuota(keyId: string, windowStart: number, amount: number): Promise<number> {
+    const row = await this.db
+      .prepare(
+        'INSERT INTO browser_log_quota (key_id, window_start, count) VALUES (?, ?, ?) ON CONFLICT (key_id, window_start) DO UPDATE SET count = count + excluded.count RETURNING count',
+      )
+      .bind(keyId, windowStart, amount)
+      .first<{ count: number }>();
+    return row?.count ?? amount;
+  }
+  async cleanupBrowserQuotaExpired(before: number): Promise<number> {
+    const result = await this.db
+      .prepare('DELETE FROM browser_log_quota WHERE window_start < ?')
+      .bind(before)
+      .run();
+    return result.meta.changes ?? 0;
   }
   async cleanupLogsExpired(before: number, limit: number): Promise<number> {
     const result = await this.db
@@ -520,14 +607,29 @@ interface LogRow {
   description: string | null;
   icon: string | null;
   props: string;
+  source: LogSource;
 }
 
-function logFromRow(row: LogRow): LogEventV1 {
+interface PublicKeyRow {
+  id: string;
+  app_id: string;
+  environment_id: string;
+  allowed_origins: string;
+  created_at: number;
+  revoked_at: number | null;
+}
+
+function publicKeyFromRow(row: PublicKeyRow): PublicLogKeyV1 {
+  return { ...row, allowed_origins: JSON.parse(row.allowed_origins) as string[] };
+}
+
+function logFromRow(row: LogRow): StoredLogV1 {
   return {
     log_id: row.log_id,
     timestamp: row.timestamp,
     event: row.event,
     level: row.level,
+    source: row.source,
     ...(row.title !== null ? { title: row.title } : {}),
     ...(row.description !== null ? { description: row.description } : {}),
     ...(row.icon !== null ? { icon: row.icon } : {}),

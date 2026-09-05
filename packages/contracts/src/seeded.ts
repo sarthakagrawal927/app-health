@@ -16,6 +16,9 @@ export const SEED_ENV_NAME = 'prod';
 export const SEED_APP_NAME = 'demo-app';
 /** Display-only ingest key for the seeded environment. Not a secret. */
 export const SEED_KEY = 'ahk_seed_do_not_use_in_production';
+/** Display-only browser (public) log key for the seeded environment. Not a secret. */
+export const SEED_PUBLIC_KEY = 'ahk_pub_seed_do_not_use_in_production';
+export const SEED_PUBLIC_KEY_ORIGINS = ['http://localhost:5173', 'http://localhost:4173'];
 
 const NOW = 1_725_000_000_000;
 

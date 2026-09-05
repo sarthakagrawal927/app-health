@@ -1866,3 +1866,100 @@ footer {
   font-weight: 600;
   color: var(--muted, #8b8f98);
 }
+
+/* Browser log source + public keys */
+.log-source {
+  display: inline-block;
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  color: #93c5fd;
+}
+.public-keys {
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--line, rgba(255, 255, 255, 0.14));
+  border-radius: 0.75rem;
+}
+.public-keys summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.public-keys-intro,
+.quiet {
+  color: var(--muted, #8b8f98);
+  font-size: 0.9rem;
+}
+.public-key-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.public-key-form label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted, #8b8f98);
+  flex: 1 1 18rem;
+}
+.public-key-form input {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  border-radius: 0.5rem;
+  background: var(--surface, rgba(255, 255, 255, 0.04));
+  color: inherit;
+}
+.public-keys-error {
+  color: #f87171;
+}
+.public-key-reveal {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  background: rgba(96, 165, 250, 0.08);
+}
+.public-key-value {
+  user-select: all;
+  word-break: break-all;
+}
+.public-key-reveal pre {
+  margin: 0;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+.public-key-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.public-key-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  border-radius: 0.5rem;
+}
+.public-key-list li > div {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+.public-key-list span {
+  color: var(--muted, #8b8f98);
+}
+.public-key-revoked {
+  font-size: 0.8rem;
+}

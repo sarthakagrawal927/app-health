@@ -16,6 +16,9 @@ import {
   SEED_ENV_ID,
   SEED_ENV_NAME,
   SEED_KEY,
+  SEED_PUBLIC_KEY,
+  SEED_PUBLIC_KEY_ORIGINS,
+  PUBLIC_LOG_KEY_PREFIX,
   buildSeedBuckets,
   type AppV1,
   type BucketV1,
@@ -25,7 +28,10 @@ import {
   type InstallationStatusV1,
   type KeyRecordV1,
   type LogEventV1,
+  type LogSource,
+  type PublicLogKeyV1,
   type Runtime,
+  type StoredLogV1,
   logLevelAtLeast,
 } from '@app-health/contracts';
 import { generateRawKey, hashKey } from './crypto.js';
@@ -40,6 +46,7 @@ import type {
   KeyRepository,
   LogListQuery,
   LogRepository,
+  PublicLogKeyRepository,
 } from './repository.js';
 import { MAX_ENVIRONMENTS_PER_APP } from './repository.js';
 
@@ -96,6 +103,7 @@ export class InMemoryAdapter
     DedupeRepository,
     EndpointInventoryRepository,
     LogRepository,
+    PublicLogKeyRepository,
     BucketRepository
 {
   private readonly apps = new Map<string, AppV1>();
@@ -105,7 +113,10 @@ export class InMemoryAdapter
   private readonly installation = new Map<string, InstallationRow>();
   private readonly seenBatches = new Map<string, number>();
   private readonly failureEvents = new Map<string, EventV1>();
-  private readonly logEvents = new Map<string, LogEventV1>();
+  private readonly logEvents = new Map<string, StoredLogV1>();
+  private readonly publicKeysById = new Map<string, PublicLogKeyV1>();
+  private readonly publicKeysByVerifier = new Map<string, PublicLogKeyV1>();
+  private readonly browserQuota = new Map<string, number>();
   private readonly observedEndpoints = new Map<
     string,
     { method: string; route: string; first_seen: number; last_seen: number }
@@ -131,6 +142,7 @@ export class InMemoryAdapter
       inventory: this,
       failures: this,
       logs: this,
+      publicKeys: this,
       buckets: this,
     };
   }
@@ -152,6 +164,16 @@ export class InMemoryAdapter
       name: SEED_ENV_NAME,
       created_at: seedNow,
     });
+    const seedPublic: PublicLogKeyV1 = {
+      id: 'pubkey-seed-0001',
+      app_id: SEED_APP_ID,
+      environment_id: SEED_ENV_ID,
+      allowed_origins: [...SEED_PUBLIC_KEY_ORIGINS],
+      created_at: seedNow,
+      revoked_at: null,
+    };
+    this.publicKeysById.set(seedPublic.id, seedPublic);
+    this.publicKeysByVerifier.set(await hashKey(SEED_PUBLIC_KEY), seedPublic);
     const seedVerifier = await hashKey(SEED_KEY);
     const seedKey: KeyRecordV1 = {
       id: 'key-seed-0001',
@@ -413,19 +435,25 @@ export class InMemoryAdapter
     }
   }
 
-  async recordLogs(appId: string, envId: string, logs: readonly LogEventV1[]): Promise<void> {
+  async recordLogs(
+    appId: string,
+    envId: string,
+    logs: readonly LogEventV1[],
+    source: LogSource,
+  ): Promise<void> {
     for (const log of logs) {
       const key = `${appId}|${envId}|${log.log_id}`;
-      if (!this.logEvents.has(key)) this.logEvents.set(key, log);
+      if (!this.logEvents.has(key)) this.logEvents.set(key, { ...log, source });
     }
   }
-  async listLogs(appId: string, envId: string, query: LogListQuery): Promise<LogEventV1[]> {
+  async listLogs(appId: string, envId: string, query: LogListQuery): Promise<StoredLogV1[]> {
     const prefix = `${appId}|${envId}|`;
     return [...this.logEvents.entries()]
       .filter(
         ([key, log]) =>
           key.startsWith(prefix) &&
           logLevelAtLeast(log.level, query.minLevel) &&
+          (query.source === undefined || log.source === query.source) &&
           (query.event === undefined || log.event === query.event),
       )
       .map(([, log]) => log)
@@ -435,6 +463,47 @@ export class InMemoryAdapter
           : right.timestamp - left.timestamp,
       )
       .slice(0, query.limit);
+  }
+  async createPublicKey(
+    appId: string,
+    envId: string,
+    allowedOrigins: readonly string[],
+    now: number,
+  ): Promise<{ record: PublicLogKeyV1; rawKey: string }> {
+    const rawKey = generateRawKey(PUBLIC_LOG_KEY_PREFIX);
+    const record: PublicLogKeyV1 = {
+      id: newId('pubkey'),
+      app_id: appId,
+      environment_id: envId,
+      allowed_origins: [...allowedOrigins],
+      created_at: now,
+      revoked_at: null,
+    };
+    this.publicKeysById.set(record.id, record);
+    this.publicKeysByVerifier.set(await hashKey(rawKey), record);
+    return { record: { ...record }, rawKey };
+  }
+  async verifyPublicKey(rawKey: string): Promise<PublicLogKeyV1 | null> {
+    const found = this.publicKeysByVerifier.get(await hashKey(rawKey));
+    return found && found.revoked_at === null ? { ...found } : null;
+  }
+  async listPublicKeys(appId: string): Promise<PublicLogKeyV1[]> {
+    return [...this.publicKeysById.values()]
+      .filter((key) => key.app_id === appId)
+      .sort((left, right) => right.created_at - left.created_at)
+      .map((key) => ({ ...key }));
+  }
+  async revokePublicKey(keyId: string, now: number): Promise<boolean> {
+    const found = this.publicKeysById.get(keyId);
+    if (!found || found.revoked_at !== null) return false;
+    found.revoked_at = now;
+    return true;
+  }
+  async consumeBrowserQuota(keyId: string, windowStart: number, amount: number): Promise<number> {
+    const bucket = `${keyId}|${windowStart}`;
+    const total = (this.browserQuota.get(bucket) ?? 0) + amount;
+    this.browserQuota.set(bucket, total);
+    return total;
   }
   async listFailures(
     appId: string,

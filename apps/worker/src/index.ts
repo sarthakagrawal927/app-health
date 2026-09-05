@@ -5,8 +5,9 @@ import {
   FailureQueryRequestV1,
   InstallationStatusV1,
   ListAppsResponseV1,
+  CreatePublicLogKeyRequestV1,
   LOG_RETENTION_DAYS,
-  LogLevelField,
+  ListPublicLogKeysResponseV1,
   LogQueryRequestV1,
   WINDOWS,
   type Window,
@@ -25,7 +26,7 @@ import {
   type OwnerIdentityAdapter,
 } from './identity.js';
 import { AppHealthService, type LogIngestResult } from './service.js';
-import { deliverLogAlerts } from './log-alerts.js';
+import { deliverSinks, resolveLogRoutes } from './log-routing.js';
 import { InvalidOtlpError, otlpSuccessBody, projectOtlpTraces } from './otlp.js';
 import { handleAgentEdge } from './agent-edge.mjs';
 
@@ -42,8 +43,10 @@ export interface Env {
   ANALYTICS_ENGINE_QUERY_TOKEN?: string;
   /** Optional Slack incoming-webhook URL for application log alerts. */
   LOG_ALERT_WEBHOOK_URL?: string;
-  /** Minimum log level posted to the webhook: debug | info | warn | error. Default info. */
+  /** Server-log alert threshold used by the default routes: debug | info | warn | error. Default info. */
   LOG_ALERT_MIN_LEVEL?: string;
+  /** Optional JSON LogRoutesV1 overriding the default routing of logs to sinks. */
+  LOG_ROUTES?: string;
   DB?: D1DatabaseLike;
   TELEMETRY?: AnalyticsEngineDatasetLike;
   ASSETS?: { fetch(request: Request): Promise<Response> };
@@ -260,23 +263,43 @@ async function handleTracesRoute(
   }
 }
 
-async function alertOnLogs(
+async function deliverRoutedSinks(
   result: LogIngestResult & { ok: true },
   bundle: AdapterBundle,
   env: Env,
 ): Promise<void> {
-  if (!env.LOG_ALERT_WEBHOOK_URL) return;
-  const minLevel = LogLevelField.safeParse(env.LOG_ALERT_MIN_LEVEL);
+  const external = Object.keys(result.sinks).filter((sink) => sink !== 'store');
+  if (external.length === 0) return;
   const [app, environment] = await Promise.all([
     bundle.repos.apps.getApp(result.app_id),
     bundle.repos.environments.getEnvironment(result.environment_id),
   ]);
-  await deliverLogAlerts(result.logs, {
-    webhookUrl: env.LOG_ALERT_WEBHOOK_URL,
-    minLevel: minLevel.success ? minLevel.data : 'info',
-    appName: app?.name ?? result.app_id,
-    environmentName: environment?.name ?? result.environment_id,
-  });
+  await deliverSinks(
+    result.sinks,
+    {
+      appName: app?.name ?? result.app_id,
+      environmentName: environment?.name ?? result.environment_id,
+    },
+    env,
+  );
+}
+
+/** Browser responses echo the caller's origin so the page can read the status. */
+function corsFor(request: Request, response: Response): Response {
+  const origin = request.headers.get('origin');
+  if (origin) {
+    response.headers.set('access-control-allow-origin', origin);
+    response.headers.set('vary', 'origin');
+  }
+  return response;
+}
+
+function isBrowserBatch(body: unknown): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    typeof (body as { public_key?: unknown }).public_key === 'string'
+  );
 }
 
 async function handleLogsIngestRoute(
@@ -286,21 +309,93 @@ async function handleLogsIngestRoute(
   url: URL,
   ctx: WorkerContext | undefined,
 ): Promise<Response | null> {
-  if (url.pathname !== '/v1/logs' || request.method !== 'POST') return null;
+  if (url.pathname !== '/v1/logs' || !['POST', 'OPTIONS'].includes(request.method)) return null;
   if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
+  if (request.method === 'OPTIONS') return corsFor(request, preflightResponse());
   try {
-    const result = await bundle.service.ingestLogs(
-      extractBearerKey(request),
-      await readJsonBounded(request),
-      Date.now(),
-    );
-    if (!result.ok) return json(result.status, { error: result.error, details: result.details });
-    const alerts = alertOnLogs(result, bundle, env);
-    if (ctx) ctx.waitUntil(alerts);
-    else await alerts;
-    return json(202, { accepted: result.accepted });
+    const body = await readJsonBounded(request);
+    const routes = resolveLogRoutes(env);
+    const result = isBrowserBatch(body)
+      ? await bundle.service.ingestBrowserLogs(
+          body,
+          request.headers.get('origin'),
+          Date.now(),
+          routes,
+        )
+      : await bundle.service.ingestLogs(extractBearerKey(request), body, Date.now(), routes);
+    if (!result.ok) {
+      return corsFor(
+        request,
+        json(result.status, { error: result.error, details: result.details }),
+      );
+    }
+    const delivery = deliverRoutedSinks(result, bundle, env);
+    if (ctx) ctx.waitUntil(delivery);
+    else await delivery;
+    return corsFor(request, json(202, { accepted: result.accepted, source: result.source }));
   } catch (error) {
     if (error instanceof BodyTooLargeError) return json(413, { error: 'request body too large' });
+    throw error;
+  }
+}
+
+function preflightResponse(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'access-control-allow-methods': 'POST, OPTIONS',
+      'access-control-allow-headers': 'content-type',
+      'access-control-max-age': '86400',
+    },
+  });
+}
+
+const PUBLIC_KEY_REVOKE_PATTERN = /^\/v1\/public-keys\/([^/]+)\/revoke$/;
+
+async function handlePublicKeyRevoke(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  keyId: string,
+): Promise<Response> {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  if (owner.appId) {
+    const keys = await bundle.service.listPublicKeys(owner.appId);
+    if (!keys.some((key) => key.id === keyId)) return productScopeForbidden();
+  }
+  const revoked = await bundle.service.revokePublicKey(keyId, Date.now());
+  return revoked
+    ? json(200, { revoked: true, key_id: keyId }, true)
+    : json(404, { error: 'no active public key' }, true);
+}
+
+async function handlePublicKeysRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  const revokeMatch = url.pathname.match(PUBLIC_KEY_REVOKE_PATTERN);
+  if (revokeMatch) return handlePublicKeyRevoke(request, bundle, owner, revokeMatch[1]);
+  if (url.pathname !== '/v1/public-keys') return null;
+  if (request.method === 'GET') {
+    const appId = url.searchParams.get('app_id');
+    if (!appId) return json(400, { error: 'app_id is required' }, true);
+    if (!ownerCanAccessApp(owner, appId)) return productScopeForbidden();
+    const keys = await bundle.service.listPublicKeys(appId);
+    return json(200, ListPublicLogKeysResponseV1.parse({ keys }), true);
+  }
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  try {
+    const parsed = CreatePublicLogKeyRequestV1.safeParse(await readJsonBounded(request));
+    if (!parsed.success) return json(400, { error: 'invalid public key request' }, true);
+    if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
+    const created = await bundle.service.createPublicKey(parsed.data, Date.now());
+    if (!created) return json(404, { error: 'environment not found for app' }, true);
+    return json(201, created, true);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError)
+      return json(413, { error: 'request body too large' }, true);
     throw error;
   }
 }
@@ -318,6 +413,7 @@ async function handleLogsQueryRoute(
     app_id: url.searchParams.get('app_id'),
     environment_id: url.searchParams.get('environment_id'),
     level: url.searchParams.get('level') ?? undefined,
+    source: url.searchParams.get('source') ?? undefined,
     event: url.searchParams.get('event') ?? undefined,
     limit: limitParam === null ? undefined : Number(limitParam),
   });
@@ -328,9 +424,12 @@ async function handleLogsQueryRoute(
     await bundle.service.queryLogs(
       parsed.data.app_id,
       parsed.data.environment_id,
-      parsed.data.level,
-      parsed.data.event,
-      parsed.data.limit,
+      {
+        level: parsed.data.level,
+        source: parsed.data.source,
+        event: parsed.data.event,
+        limit: parsed.data.limit,
+      },
       Date.now(),
     ),
     true,
@@ -495,6 +594,7 @@ async function handleOwnerRoutes(
     handleEndpointsRoute,
     handleFailuresRoute,
     handleLogsQueryRoute,
+    handlePublicKeysRoute,
   ];
   for (const handler of handlers) {
     const response = await handler(request, bundle, owner, url);
@@ -532,6 +632,7 @@ const worker = {
     await control.cleanupExpired(Date.now() - DEDUPE_WINDOW_MS, 10_000);
     await control.cleanupFailuresExpired(Date.now() - 24 * 60 * 60 * 1000, 10_000);
     await control.cleanupLogsExpired(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000, 10_000);
+    await control.cleanupBrowserQuotaExpired(Date.now() - 60 * 60 * 1000);
   },
 };
 

@@ -51,6 +51,8 @@ export const LOG_BOUNDS = {
 } as const;
 export const MAX_LOG_BATCH = LOG_BOUNDS.batch;
 export const MAX_LOG_PROPS = LOG_BOUNDS.props;
+/** Browser (public) log keys carry this prefix and travel in the request body. */
+export const PUBLIC_LOG_KEY_PREFIX = 'ahk_pub_';
 
 export type LogPropValue = string | number | boolean | null;
 
@@ -70,4 +72,9 @@ export interface LogBatchV1 {
   schema_version: SchemaVersion;
   environment?: string;
   logs: LogEventV1[];
+}
+
+/** Browser batch: LogBatchV1 plus the public key, sent as text/plain to avoid a CORS preflight. */
+export interface BrowserLogBatchV1 extends LogBatchV1 {
+  public_key: string;
 }

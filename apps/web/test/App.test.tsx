@@ -12,7 +12,8 @@ import type {
   EndpointAggregateV1,
   FailureEventV1,
   InstallationStatusV1,
-  LogEventV1,
+  PublicLogKeyV1,
+  StoredLogV1,
 } from '@app-health/contracts';
 
 const STORAGE_KEY = 'app-health-v0-project';
@@ -73,10 +74,13 @@ function installFetch(options?: {
   failureRows?: FailureEventV1[];
   apps?: AppEnvironmentV1[];
   failureFail?: boolean;
-  logRows?: LogEventV1[];
+  logRows?: StoredLogV1[];
   logFail?: boolean;
+  publicKeys?: PublicLogKeyV1[];
+  publicKeyFail?: boolean;
   fail?: boolean;
 }) {
+  const publicKeys = [...(options?.publicKeys ?? [])];
   const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
     if (options?.fail) throw new Error('connection refused');
     const url =
@@ -127,6 +131,7 @@ function installFetch(options?: {
       const minimum = url.searchParams.get('level') ?? 'debug';
       const order = ['debug', 'info', 'warn', 'error'];
       const eventFilter = url.searchParams.get('event');
+      const source = url.searchParams.get('source');
       return Response.json({
         refreshed_at: Date.now(),
         level: minimum,
@@ -135,9 +140,40 @@ function installFetch(options?: {
         logs: (options?.logRows ?? []).filter(
           (row) =>
             order.indexOf(row.level) >= order.indexOf(minimum) &&
-            (!eventFilter || row.event === eventFilter),
+            (!eventFilter || row.event === eventFilter) &&
+            (!source || row.source === source),
         ),
       });
+    }
+    if (url.pathname === '/v1/public-keys') {
+      if (options?.publicKeyFail) return new Response(null, { status: 503 });
+      if (init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as {
+          allowed_origins: string[];
+          environment_id: string;
+        };
+        const record: PublicLogKeyV1 = {
+          id: `pubkey-${publicKeys.length + 1}`,
+          app_id: 'app-test',
+          environment_id: body.environment_id,
+          allowed_origins: body.allowed_origins,
+          created_at: Date.now(),
+          revoked_at: null,
+        };
+        publicKeys.push(record);
+        return new Response(JSON.stringify({ key: 'ahk_pub_one_time_value', record }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return Response.json({ keys: publicKeys });
+    }
+    const revoke = url.pathname.match(/^\/v1\/public-keys\/([^/]+)\/revoke$/);
+    if (revoke) {
+      const key = publicKeys.find((candidate) => candidate.id === revoke[1]);
+      if (!key) return new Response(null, { status: 404 });
+      key.revoked_at = Date.now();
+      return Response.json({ revoked: true, key_id: key.id });
     }
     return new Response(null, { status: 404 });
   });
@@ -565,12 +601,13 @@ describe('App Health V0 UI', () => {
 });
 
 describe('Logs view', () => {
-  const logRows: LogEventV1[] = [
+  const logRows: StoredLogV1[] = [
     {
       log_id: '00000000-0000-4000-a000-000000000101',
       timestamp: Date.now() - 5_000,
       event: 'signup',
       level: 'info',
+      source: 'server',
       title: 'ada@example.com',
       props: { plan: 'free', seats: 2, trial: true, ref: null },
     },
@@ -579,6 +616,7 @@ describe('Logs view', () => {
       timestamp: Date.now() - 65_000,
       event: 'payment.failed',
       level: 'error',
+      source: 'browser',
       icon: '💳',
       description: 'card declined',
       props: {},
@@ -636,6 +674,75 @@ describe('Logs view', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(logCalls().length).toBeGreaterThan(3));
+  });
+
+  it('shows a browser badge, filters by source, and manages browser keys', async () => {
+    const fetchMock = installFetch({
+      logRows,
+      publicKeys: [
+        {
+          id: 'pubkey-existing',
+          app_id: 'app-test',
+          environment_id: 'env-test',
+          allowed_origins: ['https://karte.app'],
+          created_at: Date.now() - 100_000,
+          revoked_at: null,
+        },
+        {
+          id: 'pubkey-other-env',
+          app_id: 'app-test',
+          environment_id: 'env-other',
+          allowed_origins: ['https://other.app'],
+          created_at: Date.now() - 100_000,
+          revoked_at: null,
+        },
+      ],
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Logs' }));
+    expect(await screen.findByText('payment.failed')).toBeTruthy();
+    expect(document.querySelector('.log-source')?.textContent).toBe('browser');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Source' }), {
+      target: { value: 'server' },
+    });
+    await waitFor(() => expect(screen.queryByText('payment.failed')).toBeNull());
+    expect(screen.getByText('ada@example.com')).toBeTruthy();
+    const sourceCall = fetchMock.mock.calls
+      .map(([input]) => input)
+      .filter((input): input is URL => input instanceof URL && input.pathname === '/v1/logs')
+      .at(-1);
+    expect(sourceCall?.searchParams.get('source')).toBe('server');
+
+    expect(await screen.findByText('Browser logging keys (1 active)')).toBeTruthy();
+    expect(screen.getByText('https://karte.app')).toBeTruthy();
+    expect(screen.queryByText('https://other.app')).toBeNull();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Allowed origins' }), {
+      target: { value: 'https://new.app/, http://localhost:5173' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create browser key' }));
+    expect(await screen.findByText('ahk_pub_one_time_value')).toBeTruthy();
+    expect(screen.getByText(/createWebLogger/)).toBeTruthy();
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).endsWith('/v1/public-keys') && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body)).allowed_origins).toEqual([
+      'https://new.app',
+      'http://localhost:5173',
+    ]);
+    expect(await screen.findByText('https://new.app, http://localhost:5173')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke browser key pubkey-existing' }));
+    expect(await screen.findByText(/revoked/)).toBeTruthy();
+  });
+
+  it('reports browser key API failures without hiding the logs', async () => {
+    installFetch({ logRows, publicKeyFail: true });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Logs' }));
+    expect(await screen.findByText('ada@example.com')).toBeTruthy();
+    expect(await screen.findByText('API returned 503')).toBeTruthy();
   });
 
   it('shows the empty state with a next action and recovers from an API failure', async () => {

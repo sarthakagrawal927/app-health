@@ -43,7 +43,9 @@
     "APP_HEALTH_INGEST_HOST": "ingest.sassmaker.com",
     "APP_HEALTH_INGEST_ORIGIN": "https://ingest.sassmaker.com",
     "CLOUDFLARE_ACCOUNT_ID": "7d048325699a5acddb44d3be31cf6ba9",
-    // Application logs at or above this level are posted to LOG_ALERT_WEBHOOK_URL (a secret).
+    // Default routing: store every log; post server logs at or above this level (and
+    // browser logs at error) to LOG_ALERT_WEBHOOK_URL (a secret). Set LOG_ROUTES (JSON,
+    // LogRoutesV1 in packages/contracts) to route by source, level, or event instead.
     "LOG_ALERT_MIN_LEVEL": "info",
   },
   "env": {

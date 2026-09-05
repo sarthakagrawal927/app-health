@@ -17,6 +17,9 @@ import type {
   FailureEventV1,
   LogEventV1,
   LogLevel,
+  LogSource,
+  PublicLogKeyV1,
+  StoredLogV1,
 } from '@app-health/contracts';
 
 /** Persisted app records. */
@@ -97,6 +100,7 @@ export interface FailureRepository {
 export interface LogListQuery {
   /** Minimum level, inclusive. */
   minLevel: LogLevel;
+  source?: LogSource;
   event?: string;
   limit: number;
 }
@@ -106,8 +110,33 @@ export interface LogListQuery {
  * explicit events an application chose to send, retained for a bounded window.
  */
 export interface LogRepository {
-  recordLogs(appId: string, envId: string, logs: readonly LogEventV1[]): Promise<void>;
-  listLogs(appId: string, envId: string, query: LogListQuery): Promise<LogEventV1[]>;
+  recordLogs(
+    appId: string,
+    envId: string,
+    logs: readonly LogEventV1[],
+    source: LogSource,
+  ): Promise<void>;
+  listLogs(appId: string, envId: string, query: LogListQuery): Promise<StoredLogV1[]>;
+}
+
+/**
+ * Public browser log keys. Only the verifier hash is stored; the raw key is
+ * returned once at creation. Each key is pinned to one environment and an
+ * origin allowlist, and rate limited per minute.
+ */
+export interface PublicLogKeyRepository {
+  createPublicKey(
+    appId: string,
+    envId: string,
+    allowedOrigins: readonly string[],
+    now: number,
+  ): Promise<{ record: PublicLogKeyV1; rawKey: string }>;
+  verifyPublicKey(rawKey: string): Promise<PublicLogKeyV1 | null>;
+  listPublicKeys(appId: string): Promise<PublicLogKeyV1[]>;
+  /** Returns false when no active key matched. */
+  revokePublicKey(keyId: string, now: number): Promise<boolean>;
+  /** Add `amount` to the key's counter for the minute starting at `windowStart`; returns the new total. */
+  consumeBrowserQuota(keyId: string, windowStart: number, amount: number): Promise<number>;
 }
 
 interface ObservedEndpoint {
@@ -188,6 +217,7 @@ export interface AppHealthRepositories {
   inventory?: EndpointInventoryRepository;
   failures?: FailureRepository;
   logs?: LogRepository;
+  publicKeys?: PublicLogKeyRepository;
   buckets: BucketRepository;
   setup?: SetupRepository;
 }

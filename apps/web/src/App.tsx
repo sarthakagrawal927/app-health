@@ -4,6 +4,7 @@ import {
   DEGRADED_P95_MS,
   INSUFFICIENT_DATA_MIN_REQUESTS,
   LOG_LEVELS,
+  LOG_SOURCES,
   SEED_APP_ID,
   SEED_APP_NAME,
   SEED_ENV_ID,
@@ -18,9 +19,13 @@ import {
   type FailureQueryResponseV1,
   type InstallationStatusV1,
   type ListAppsResponseV1,
-  type LogEventV1,
+  type CreatePublicLogKeyResponseV1,
+  type ListPublicLogKeysResponseV1,
   type LogLevel,
   type LogQueryResponseV1,
+  type LogSource,
+  type PublicLogKeyV1,
+  type StoredLogV1,
   type Runtime,
   type Window,
 } from '@app-health/contracts';
@@ -969,16 +974,17 @@ const LEVEL_FILTER_LABELS: Record<LogLevel, string> = {
 
 const LEVEL_ICONS: Record<LogLevel, string> = { debug: '🔍', info: '🔔', warn: '⚠️', error: '🚨' };
 
-function formatPropValue(value: LogEventV1['props'][string]): string {
+function formatPropValue(value: StoredLogV1['props'][string]): string {
   return value === null ? 'null' : String(value);
 }
 
-function LogRow({ log }: { log: LogEventV1 }): JSX.Element {
+function LogRow({ log }: { log: StoredLogV1 }): JSX.Element {
   const props = Object.entries(log.props);
   return (
     <tr>
       <td data-label="Level">
         <span className={`log-level log-level-${log.level}`}>{log.level}</span>
+        {log.source === 'browser' ? <span className="log-source">browser</span> : null}
       </td>
       <td data-label="Event">
         <span className="log-icon" aria-hidden="true">
@@ -1079,6 +1085,7 @@ function scopedUrl(path: string, project: SavedProject): URL {
 
 interface LogsFilters {
   level: LogLevel;
+  source: LogSource | '';
   event: string;
 }
 
@@ -1095,7 +1102,7 @@ function LogsView({
   project: SavedProject;
   ownerToken: string;
 }): JSX.Element {
-  const [filters, setFilters] = useState<LogsFilters>({ level: 'debug', event: '' });
+  const [filters, setFilters] = useState<LogsFilters>({ level: 'debug', source: '', event: '' });
   const [result, setResult] = useState<LogsResult>({ data: null, error: null, loading: true });
   const [refresh, setRefresh] = useState(0);
 
@@ -1103,6 +1110,7 @@ function LogsView({
     let cancelled = false;
     const url = scopedUrl('/v1/logs', project);
     url.searchParams.set('level', filters.level);
+    if (filters.source) url.searchParams.set('source', filters.source);
     if (filters.event) url.searchParams.set('event', filters.event);
     url.searchParams.set('limit', '200');
     setResult((previous) => ({ ...previous, loading: true }));
@@ -1135,6 +1143,7 @@ function LogsView({
         onRefresh={bump}
       />
       <LogsSurface data={data} error={error} loading={loading} onRefresh={bump} />
+      <PublicKeysPanel project={project} ownerToken={ownerToken} />
     </section>
   );
 }
@@ -1186,6 +1195,26 @@ function LogsToolbar({
           </select>
         </label>
         <label>
+          Source
+          <select
+            aria-label="Source"
+            value={filters.source}
+            onChange={(event) =>
+              onFilters((previous) => ({
+                ...previous,
+                source: event.target.value as LogSource | '',
+              }))
+            }
+          >
+            <option value="">Server and browser</option>
+            {LOG_SOURCES.map((value) => (
+              <option key={value} value={value}>
+                {value === 'server' ? 'Server only' : 'Browser only'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Event
           <input
             name="event"
@@ -1202,6 +1231,190 @@ function LogsToolbar({
         </button>
       </form>
     </div>
+  );
+}
+
+interface PublicKeysState {
+  keys: PublicLogKeyV1[];
+  created: CreatePublicLogKeyResponseV1 | null;
+  error: string | null;
+}
+
+function parseOrigins(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
+
+function PublicKeysPanel({
+  project,
+  ownerToken,
+}: {
+  project: SavedProject;
+  ownerToken: string;
+}): JSX.Element {
+  const [state, setState] = useState<PublicKeysState>({ keys: [], created: null, error: null });
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const url = apiUrl('/v1/public-keys');
+    url.searchParams.set('app_id', project.appId);
+    loadOwnerJson(url, ownerToken)
+      .then((body) => {
+        if (cancelled) return;
+        const keys = (body as ListPublicLogKeysResponseV1).keys.filter(
+          (key) => key.environment_id === project.environmentId,
+        );
+        setState((previous) => ({ ...previous, keys, error: null }));
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        const error = cause instanceof Error ? cause.message : 'Could not load browser keys';
+        setState((previous) => ({ ...previous, error }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerToken, project, refresh]);
+
+  async function create(origins: string[]): Promise<void> {
+    try {
+      const response = await ownerFetch('/v1/public-keys', ownerToken, {
+        method: 'POST',
+        body: JSON.stringify({
+          app_id: project.appId,
+          environment_id: project.environmentId,
+          allowed_origins: origins,
+        }),
+      });
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      const created = (await response.json()) as CreatePublicLogKeyResponseV1;
+      setState((previous) => ({ ...previous, created, error: null }));
+      setRefresh((value) => value + 1);
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : 'Could not create browser key';
+      setState((previous) => ({ ...previous, error }));
+    }
+  }
+
+  async function revoke(keyId: string): Promise<void> {
+    const response = await ownerFetch(`/v1/public-keys/${keyId}/revoke`, ownerToken, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      setState((previous) => ({ ...previous, error: `API returned ${response.status}` }));
+      return;
+    }
+    setRefresh((value) => value + 1);
+  }
+
+  return (
+    <details className="public-keys">
+      <summary>
+        Browser logging keys ({state.keys.filter((key) => key.revoked_at === null).length} active)
+      </summary>
+      <p className="public-keys-intro">
+        Public keys let pages send logs directly. Each key is pinned to this environment and the
+        origins you list, rate limited, and its logs are tagged <code>browser</code>.
+      </p>
+      <PublicKeyForm onCreate={create} />
+      {state.error ? (
+        <p className="public-keys-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+      {state.created ? (
+        <PublicKeyReveal created={state.created} environment={project.environment} />
+      ) : null}
+      <PublicKeyList keys={state.keys} onRevoke={revoke} />
+    </details>
+  );
+}
+
+function PublicKeyForm({
+  onCreate,
+}: {
+  onCreate: (origins: string[]) => Promise<void>;
+}): JSX.Element {
+  return (
+    <form
+      className="public-key-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const origins = parseOrigins(
+          String(new FormData(event.currentTarget).get('origins') ?? ''),
+        );
+        if (origins.length > 0) void onCreate(origins);
+      }}
+    >
+      <label>
+        Allowed origins
+        <input
+          name="origins"
+          aria-label="Allowed origins"
+          placeholder="https://example.com, http://localhost:5173"
+          required
+        />
+      </label>
+      <button type="submit" className="secondary-button compact-button">
+        Create browser key
+      </button>
+    </form>
+  );
+}
+
+function PublicKeyReveal({
+  created,
+  environment,
+}: {
+  created: CreatePublicLogKeyResponseV1;
+  environment: string;
+}): JSX.Element {
+  const snippet = `import { createWebLogger } from '@saas-maker/app-health/web';\n\nconst logs = createWebLogger({\n  publicKey: '${created.key}',\n  environment: ${JSON.stringify(environment)},\n});\n\nlogs.log('pricing.viewed', { props: { plan: 'pro' } });`;
+  return (
+    <div className="public-key-reveal">
+      <strong>Copy this key now; it is shown once.</strong>
+      <code className="public-key-value">{created.key}</code>
+      <pre>
+        <code>{snippet}</code>
+      </pre>
+    </div>
+  );
+}
+
+function PublicKeyList({
+  keys,
+  onRevoke,
+}: {
+  keys: PublicLogKeyV1[];
+  onRevoke: (keyId: string) => Promise<void>;
+}): JSX.Element {
+  if (keys.length === 0) return <p className="quiet">No browser keys for this environment yet.</p>;
+  return (
+    <ul className="public-key-list">
+      {keys.map((key) => (
+        <li key={key.id}>
+          <div>
+            <code>{key.id}</code>
+            <span>{key.allowed_origins.join(', ')}</span>
+          </div>
+          {key.revoked_at === null ? (
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => void onRevoke(key.id)}
+              aria-label={`Revoke browser key ${key.id}`}
+            >
+              Revoke
+            </button>
+          ) : (
+            <span className="public-key-revoked">revoked {formatAge(key.revoked_at)}</span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -312,6 +312,12 @@ events an application chooses to send, never derived from traffic.
 - Node: `appHealth.log('signup', { title: user.email, props: { plan } })`.
   Any runtime: copy `examples/dropin-log-client/ping.ts`, which posts one
   batch per call with no dependencies. The Go SDK does not send logs yet.
+- Browser: create a public key (`ahk_pub_…`) in the Logs tab, pinned to your
+  origins and rate limited, then `createWebLogger` from
+  `@saas-maker/app-health/web` (or copy `ping-web.ts`). Browser logs are
+  stored as `source: browser` and alert only at `error` by default.
+- Routing: `LOG_ROUTES` decides per log which sinks (`store`, `slack`) receive
+  it, matched on source, level, and event.
 
 See [docs/logs.md](docs/logs.md) for the wiring guide and decision record.
 

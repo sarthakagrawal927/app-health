@@ -46,9 +46,11 @@ separate Go compatibility job that retains the tagged Echo release canary.
 - Endpoint telemetry collects only method, normalized route, status, duration,
   timestamp, and optional release. Never add capture of headers, cookies,
   query values, route parameter values, bodies, identity, stacks, or spans.
-- Application logs (`/v1/logs`, `client.log()`) are the deliberate exception:
-  explicit, owner-authored events carrying what the caller passes. Never derive
-  a log from request traffic, and keep the 30-day retention bounded.
+- Application logs (`/v1/logs`, `client.log()`, `createWebLogger`) are the
+  deliberate exception: explicit, owner-authored events carrying what the
+  caller passes. Never derive a log from request traffic, keep the 30-day
+  retention bounded, and never accept a browser batch without a public key
+  whose origin allowlist matches the request `Origin`.
 
 ## Wave status
 

@@ -58,6 +58,27 @@ and appear in the dashboard's Logs tab within seconds, filterable by level and
 event. When the owner has configured a Slack webhook, logs at or above the
 configured level are posted there too.
 
+### From the browser
+
+Pages use a **public** log key (`ahk_pub_…`) created in the dashboard's Logs
+tab. It is not a secret: the server pins it to one environment and an origin
+allowlist, rate limits it, and stores what it receives as `source: browser`.
+Keep money and account facts on the server; use the browser for what the
+server never sees.
+
+```ts
+import { createWebLogger } from '@saas-maker/app-health/web';
+
+const logs = createWebLogger({ publicKey: 'ahk_pub_…', environment: 'production' });
+logs.log('pricing.viewed', { props: { plan: 'pro' } });
+logs.log('checkout.abandoned', { level: 'warn', title: cartId });
+```
+
+Batches go out as `text/plain` (no CORS preflight) with `keepalive`, and via
+`navigator.sendBeacon` when the tab is hidden or closing. Under 2 KB, no
+dependencies. Static sites can copy `examples/dropin-log-client/ping-web.ts`
+instead of installing the package.
+
 ## Hono on Cloudflare Workers
 
 Until npm publisher authentication is restored, install the same verified

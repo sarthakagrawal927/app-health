@@ -7,11 +7,17 @@ import {
   type D1PreparedStatement,
 } from '../src/d1-adapter.js';
 import { buildLogAlert, deliverLogAlerts, escapeMrkdwn } from '../src/log-alerts.js';
+import { resolveLogRoutes } from '../src/log-routing.js';
 import {
   SEED_APP_ID,
   SEED_ENV_ID,
   SEED_KEY,
   SEED_ENV_NAME,
+  SEED_PUBLIC_KEY,
+  SEED_PUBLIC_KEY_ORIGINS,
+  BROWSER_LOGS_PER_MINUTE,
+  defaultLogRoutes,
+  type CreatePublicLogKeyResponseV1,
   type LogEventV1,
   type LogQueryResponseV1,
 } from '@app-health/contracts';
@@ -67,7 +73,7 @@ describe('log ingest and query routes', () => {
       bearer(SEED_KEY),
     );
     expect(posted.status).toBe(202);
-    await expect(posted.json()).resolves.toEqual({ accepted: 2 });
+    await expect(posted.json()).resolves.toEqual({ accepted: 2, source: 'server' });
 
     const listed = await call(
       'GET',
@@ -263,9 +269,7 @@ describe('log service and in-memory repository', () => {
     const response = await service.queryLogs(
       created.app.id,
       created.environment.id,
-      'debug',
-      undefined,
-      50,
+      { level: 'debug', limit: 50 },
       NOW,
     );
     expect(response.logs.map((entry) => entry.log_id)).toEqual([logId(6)]);
@@ -278,7 +282,12 @@ describe('log service and in-memory repository', () => {
     const service = new AppHealthService(repos);
     const ingested = await service.ingestLogs(SEED_KEY, batch([log(1)]), NOW);
     expect(ingested.ok).toBe(true);
-    const listed = await service.queryLogs(SEED_APP_ID, SEED_ENV_ID, 'debug', undefined, 10, NOW);
+    const listed = await service.queryLogs(
+      SEED_APP_ID,
+      SEED_ENV_ID,
+      { level: 'debug', limit: 10 },
+      NOW,
+    );
     expect(listed.logs).toEqual([]);
   });
 });
@@ -294,7 +303,7 @@ class Statement implements D1PreparedStatement {
     return this;
   }
   async first<T>(): Promise<T | null> {
-    return null;
+    return (this.db.firstResults.shift() as T | null | undefined) ?? null;
   }
   async all<T>(): Promise<{ results: T[] }> {
     return { results: (this.db.allResults.shift() as T[] | undefined) ?? [] };
@@ -307,6 +316,7 @@ class Statement implements D1PreparedStatement {
 class FakeDatabase implements D1DatabaseLike {
   statements: Statement[] = [];
   allResults: unknown[][] = [];
+  firstResults: unknown[] = [];
   changes = 3;
   failBatch = false;
   prepare(sql: string): D1PreparedStatement {
@@ -323,9 +333,9 @@ describe('D1 log storage', () => {
   it('inserts logs with nulls for absent text and JSON props', async () => {
     const db = new FakeDatabase();
     const control = new D1ControlPlane(db);
-    await control.recordLogs('app', 'env', []);
+    await control.recordLogs('app', 'env', [], 'server');
     expect(db.statements).toHaveLength(0);
-    await control.recordLogs('app', 'env', [log(1, { title: 'hi', props: { a: 1 } })]);
+    await control.recordLogs('app', 'env', [log(1, { title: 'hi', props: { a: 1 } })], 'browser');
     expect(db.statements[0].sql).toContain('INSERT OR IGNORE INTO log_events');
     expect(db.statements[0].values).toEqual([
       logId(1),
@@ -338,9 +348,10 @@ describe('D1 log storage', () => {
       null,
       null,
       '{"a":1}',
+      'browser',
     ]);
     db.failBatch = true;
-    await expect(control.recordLogs('app', 'env', [log(2)])).rejects.toThrow(
+    await expect(control.recordLogs('app', 'env', [log(2)], 'server')).rejects.toThrow(
       'D1 log insert failed',
     );
   });
@@ -357,11 +368,13 @@ describe('D1 log storage', () => {
         description: null,
         icon: null,
         props: '{"plan":"free"}',
+        source: 'browser',
       },
     ]);
     const control = new D1ControlPlane(db);
     const logs = await control.listLogs('app', 'env', {
       minLevel: 'warn',
+      source: 'browser',
       event: 'signup',
       limit: 7,
     });
@@ -371,17 +384,29 @@ describe('D1 log storage', () => {
         timestamp: NOW,
         event: 'signup',
         level: 'warn',
+        source: 'browser',
         title: 'a@b.co',
         props: { plan: 'free' },
       },
     ]);
     expect(db.statements[0].sql).toContain('level IN (?, ?)');
+    expect(db.statements[0].sql).toContain('AND source = ?');
     expect(db.statements[0].sql).toContain('AND event = ?');
-    expect(db.statements[0].values).toEqual(['app', 'env', 'warn', 'error', 'signup', 7]);
+    expect(db.statements[0].values).toEqual([
+      'app',
+      'env',
+      'warn',
+      'error',
+      'browser',
+      'signup',
+      7,
+    ]);
 
     await control.listLogs('app', 'env', { minLevel: 'debug', limit: 1 });
     expect(db.statements[1].values).toEqual(['app', 'env', 'debug', 'info', 'warn', 'error', 1]);
     expect(db.statements[1].sql).not.toContain('AND event');
+    expect(db.statements[1].sql).not.toContain('AND source');
+    expect(db.statements[1].sql).not.toContain('AND source');
   });
 
   it('prunes expired logs in bounded batches', async () => {
@@ -398,5 +423,314 @@ describe('D1 log storage', () => {
     expect(
       db.statements.some((statement) => statement.sql.includes('DELETE FROM log_events')),
     ).toBe(true);
+    expect(
+      db.statements.some((statement) => statement.sql.includes('DELETE FROM browser_log_quota')),
+    ).toBe(true);
+  });
+});
+
+describe('D1 public keys and quota', () => {
+  it('creates, verifies, lists, and revokes public keys and counts quota', async () => {
+    const db = new FakeDatabase();
+    const control = new D1ControlPlane(db);
+    const created = await control.createPublicKey('app', 'env', ['https://karte.app'], NOW);
+    expect(created.rawKey.startsWith('ahk_pub_')).toBe(true);
+    expect(created.record).toMatchObject({
+      app_id: 'app',
+      environment_id: 'env',
+      revoked_at: null,
+    });
+    expect(db.statements[0].sql).toContain('INSERT INTO public_log_keys');
+    expect(db.statements[0].values[4]).toBe('["https://karte.app"]');
+
+    db.firstResults.push({
+      id: 'pubkey-1',
+      app_id: 'app',
+      environment_id: 'env',
+      allowed_origins: '["https://karte.app"]',
+      created_at: NOW,
+      revoked_at: null,
+    });
+    expect(await control.verifyPublicKey('ahk_pub_x')).toMatchObject({
+      id: 'pubkey-1',
+      allowed_origins: ['https://karte.app'],
+    });
+    expect(await control.verifyPublicKey('ahk_pub_y')).toBeNull();
+
+    db.allResults.push([
+      {
+        id: 'pubkey-1',
+        app_id: 'app',
+        environment_id: 'env',
+        allowed_origins: '[]',
+        created_at: 1,
+        revoked_at: 2,
+      },
+    ]);
+    expect((await control.listPublicKeys('app'))[0].revoked_at).toBe(2);
+
+    expect(await control.revokePublicKey('pubkey-1', NOW)).toBe(true);
+    db.changes = 0;
+    expect(await control.revokePublicKey('pubkey-1', NOW)).toBe(false);
+
+    db.firstResults.push({ count: 42 });
+    expect(await control.consumeBrowserQuota('pubkey-1', NOW, 2)).toBe(42);
+    expect(await control.consumeBrowserQuota('pubkey-1', NOW, 3)).toBe(3);
+    expect(db.statements.at(-1)?.sql).toContain('ON CONFLICT (key_id, window_start)');
+    expect(await control.cleanupBrowserQuotaExpired(NOW)).toBe(0);
+  });
+});
+
+function browserBatch(logs: unknown[], publicKey = SEED_PUBLIC_KEY, environment?: string) {
+  return {
+    schema_version: 'v1',
+    public_key: publicKey,
+    ...(environment ? { environment } : {}),
+    logs,
+  };
+}
+const ORIGIN = SEED_PUBLIC_KEY_ORIGINS[0];
+
+describe('browser log ingest', () => {
+  it('accepts a public-key batch from an allowed origin, tags it as browser, and echoes CORS', async () => {
+    const response = await call(
+      'POST',
+      '/v1/logs',
+      LOCAL_ENV,
+      browserBatch([log(501, { title: 'clicked' })]),
+      {
+        origin: ORIGIN,
+        'content-type': 'text/plain',
+      },
+    );
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ accepted: 1, source: 'browser' });
+    expect(response.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+    const listed = (await (
+      await call(
+        'GET',
+        `/v1/logs?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&source=browser`,
+        LOCAL_ENV,
+      )
+    ).json()) as LogQueryResponseV1;
+    expect(listed.logs.map((entry) => entry.source)).toEqual(['browser']);
+    const serverOnly = (await (
+      await call(
+        'GET',
+        `/v1/logs?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&source=server`,
+        LOCAL_ENV,
+      )
+    ).json()) as LogQueryResponseV1;
+    expect(serverOnly.logs.every((entry) => entry.source === 'server')).toBe(true);
+  });
+
+  it('answers CORS preflight on the ingest host', async () => {
+    const response = await call('OPTIONS', '/v1/logs', LOCAL_ENV, undefined, { origin: ORIGIN });
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+    expect(response.headers.get('access-control-allow-headers')).toBe('content-type');
+  });
+
+  it('rejects unknown keys, disallowed or missing origins, and mismatched environments', async () => {
+    const bad = await call(
+      'POST',
+      '/v1/logs',
+      LOCAL_ENV,
+      browserBatch([log(502)], 'ahk_pub_nope'),
+      {
+        origin: ORIGIN,
+      },
+    );
+    expect(bad.status).toBe(401);
+    const wrongOrigin = await call('POST', '/v1/logs', LOCAL_ENV, browserBatch([log(503)]), {
+      origin: 'https://evil.example',
+    });
+    expect(wrongOrigin.status).toBe(403);
+    expect(wrongOrigin.headers.get('access-control-allow-origin')).toBe('https://evil.example');
+    expect((await call('POST', '/v1/logs', LOCAL_ENV, browserBatch([log(504)]))).status).toBe(403);
+    const mismatch = await call(
+      'POST',
+      '/v1/logs',
+      LOCAL_ENV,
+      browserBatch([log(505)], SEED_PUBLIC_KEY, 'staging'),
+      {
+        origin: ORIGIN,
+      },
+    );
+    expect(mismatch.status).toBe(400);
+    const invalid = await call(
+      'POST',
+      '/v1/logs',
+      LOCAL_ENV,
+      browserBatch([{ ...log(506), event: 'Bad' }]),
+      {
+        origin: ORIGIN,
+      },
+    );
+    expect(invalid.status).toBe(400);
+    await expect(invalid.json()).resolves.toMatchObject({ error: 'invalid browser log batch' });
+  });
+
+  it('rate limits a public key per minute', async () => {
+    const adapter = await InMemoryAdapter.create();
+    const service = new AppHealthService(adapter.asRepositories());
+    const big = Array.from({ length: 100 }, (_, i) => log(1000 + i));
+    for (let batch = 0; batch < BROWSER_LOGS_PER_MINUTE / 100; batch += 1) {
+      const ok = await service.ingestBrowserLogs(
+        browserBatch(big),
+        ORIGIN,
+        NOW,
+        defaultLogRoutes(),
+      );
+      expect(ok.ok).toBe(true);
+    }
+    const over = await service.ingestBrowserLogs(
+      browserBatch([log(507)]),
+      ORIGIN,
+      NOW,
+      defaultLogRoutes(),
+    );
+    expect(over).toMatchObject({ ok: false, status: 429 });
+    const nextMinute = await service.ingestBrowserLogs(
+      browserBatch([log(508)]),
+      ORIGIN,
+      NOW + 60_000,
+    );
+    expect(nextMinute.ok).toBe(true);
+  });
+
+  it('fails closed when the public key repository is missing', async () => {
+    const adapter = await InMemoryAdapter.create();
+    const repos = adapter.asRepositories();
+    delete repos.publicKeys;
+    const service = new AppHealthService(repos);
+    expect(await service.ingestBrowserLogs(browserBatch([log(509)]), ORIGIN, NOW)).toMatchObject({
+      status: 401,
+    });
+    expect(
+      await service.createPublicKey(
+        { app_id: SEED_APP_ID, environment_id: SEED_ENV_ID, allowed_origins: [ORIGIN] },
+        NOW,
+      ),
+    ).toBeNull();
+    expect(await service.listPublicKeys(SEED_APP_ID)).toEqual([]);
+    expect(await service.revokePublicKey('x', NOW)).toBe(false);
+  });
+});
+
+describe('public key routes', () => {
+  it('creates a key once, lists it, and revokes it', async () => {
+    const created = await call('POST', '/v1/public-keys', LOCAL_ENV, {
+      app_id: SEED_APP_ID,
+      environment_id: SEED_ENV_ID,
+      allowed_origins: ['https://karte.app'],
+    });
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as CreatePublicLogKeyResponseV1;
+    expect(body.key.startsWith('ahk_pub_')).toBe(true);
+    expect(body.record.allowed_origins).toEqual(['https://karte.app']);
+
+    const listed = await call('GET', `/v1/public-keys?app_id=${SEED_APP_ID}`, LOCAL_ENV);
+    const keys = ((await listed.json()) as { keys: { id: string }[] }).keys;
+    expect(keys.map((key) => key.id)).toContain(body.record.id);
+
+    const accepted = await call('POST', '/v1/logs', LOCAL_ENV, browserBatch([log(510)], body.key), {
+      origin: 'https://karte.app',
+    });
+    expect(accepted.status).toBe(202);
+
+    const revoked = await call('POST', `/v1/public-keys/${body.record.id}/revoke`, LOCAL_ENV);
+    expect(revoked.status).toBe(200);
+    expect((await call('POST', `/v1/public-keys/${body.record.id}/revoke`, LOCAL_ENV)).status).toBe(
+      404,
+    );
+    const rejected = await call('POST', '/v1/logs', LOCAL_ENV, browserBatch([log(511)], body.key), {
+      origin: 'https://karte.app',
+    });
+    expect(rejected.status).toBe(401);
+  });
+
+  it('validates requests and methods', async () => {
+    expect((await call('GET', '/v1/public-keys', LOCAL_ENV)).status).toBe(400);
+    expect((await call('PUT', '/v1/public-keys', LOCAL_ENV)).status).toBe(405);
+    expect((await call('GET', '/v1/public-keys/x/revoke', LOCAL_ENV)).status).toBe(405);
+    const badOrigin = await call('POST', '/v1/public-keys', LOCAL_ENV, {
+      app_id: SEED_APP_ID,
+      environment_id: SEED_ENV_ID,
+      allowed_origins: ['nope'],
+    });
+    expect(badOrigin.status).toBe(400);
+    const missingEnv = await call('POST', '/v1/public-keys', LOCAL_ENV, {
+      app_id: SEED_APP_ID,
+      environment_id: 'env-missing',
+      allowed_origins: ['https://a.b'],
+    });
+    expect(missingEnv.status).toBe(404);
+  });
+});
+
+describe('log routing configuration', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('falls back to defaults for missing or invalid LOG_ROUTES', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(resolveLogRoutes({})).toEqual(defaultLogRoutes('info'));
+    expect(resolveLogRoutes({ LOG_ALERT_MIN_LEVEL: 'warn' })[1].match.min_level).toBe('warn');
+    expect(resolveLogRoutes({ LOG_ROUTES: '{not json' })).toEqual(defaultLogRoutes('info'));
+    expect(resolveLogRoutes({ LOG_ROUTES: '[{"sinks":["email"]}]' })).toEqual(
+      defaultLogRoutes('info'),
+    );
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+    const custom = resolveLogRoutes({
+      LOG_ROUTES: '[{"match":{"event":"signup"},"sinks":["slack"]}]',
+    });
+    expect(custom).toEqual([{ match: { event: 'signup' }, sinks: ['slack'] }]);
+  });
+
+  it('routes decide what is stored and what reaches Slack', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const env: Env = {
+      ...LOCAL_ENV,
+      LOG_ALERT_WEBHOOK_URL: 'https://hooks.slack.test/abc',
+      LOG_ROUTES: JSON.stringify([
+        { match: { source: 'server' }, sinks: ['store'] },
+        { match: { event: 'payment.failed' }, sinks: ['slack'] },
+      ]),
+    };
+    const response = await call(
+      'POST',
+      '/v1/logs',
+      env,
+      batch([
+        log(512, { event: 'payment.failed' }),
+        log(513, { event: 'quiet.debug', level: 'debug' }),
+      ]),
+      bearer(SEED_KEY),
+    );
+    expect(response.status).toBe(202);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Browser logs match no store rule under these routes: accepted, delivered nowhere, not kept.
+    const dropped = await call(
+      'POST',
+      '/v1/logs',
+      env,
+      browserBatch([log(514, { event: 'ui.click' })]),
+      {
+        origin: ORIGIN,
+      },
+    );
+    expect(dropped.status).toBe(202);
+    const listed = (await (
+      await call(
+        'GET',
+        `/v1/logs?app_id=${SEED_APP_ID}&environment_id=${SEED_ENV_ID}&event=ui.click`,
+        LOCAL_ENV,
+      )
+    ).json()) as LogQueryResponseV1;
+    expect(listed.logs).toHaveLength(0);
   });
 });

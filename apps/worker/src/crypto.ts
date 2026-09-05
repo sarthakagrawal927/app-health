@@ -11,11 +11,11 @@ export const KEY_PREFIX = 'ahk_';
 /** Number of random bytes in a raw key (32 bytes -> 64 hex chars). */
 const KEY_RANDOM_BYTES = 32;
 
-/** Generate a new random one-time ingest key. */
-export function generateRawKey(): string {
+/** Generate a new random one-time key. Public browser keys pass their own prefix. */
+export function generateRawKey(prefix: string = KEY_PREFIX): string {
   const bytes = new Uint8Array(KEY_RANDOM_BYTES);
   crypto.getRandomValues(bytes);
-  return KEY_PREFIX + bytesToHex(bytes);
+  return prefix + bytesToHex(bytes);
 }
 
 /** Compute the non-reversible SHA-256 verifier (hex) for a raw key. */

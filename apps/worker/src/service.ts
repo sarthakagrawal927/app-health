@@ -6,8 +6,11 @@
 import {
   BUCKET_MS,
   FAILURE_RETENTION_HOURS,
+  BROWSER_LOGS_PER_MINUTE,
   LOG_RETENTION_DAYS,
   LogQueryResponseV1,
+  defaultLogRoutes,
+  routeLogs,
   WINDOW_MS,
   FailureQueryResponseV1,
   InstallationStatusV1,
@@ -15,6 +18,7 @@ import {
   buildSeedBuckets,
   mergeBuckets,
   validateBatch,
+  validateBrowserLogBatch,
   validateLogBatch,
   type CreateAppRequestV1 as CreateAppRequest,
   type CreateAppResponseV1,
@@ -24,8 +28,15 @@ import {
   type FailureQueryResponseV1 as FailureQueryResponse,
   type KeyRecordV1,
   type ListAppsResponseV1,
+  type CreatePublicLogKeyRequestV1,
+  type CreatePublicLogKeyResponseV1,
   type LogEventV1,
   type LogLevel,
+  type LogRoutesV1,
+  type LogSink,
+  type LogSource,
+  type PublicLogKeyV1,
+  type StoredLogV1,
   type Runtime,
   type Window,
 } from '@app-health/contracts';
@@ -37,10 +48,23 @@ import { isErrorStatus } from './in-memory-adapter.js';
 export type IngestResult =
   { ok: true; accepted: number; duplicates: number } | { ok: false; status: number; error: string };
 
-/** Result of a log ingest attempt. Accepted logs are returned so the caller can alert on them. */
+/**
+ * Result of a log ingest attempt. `sinks` groups the accepted logs by
+ * destination after routing; `store` has already been persisted, the others
+ * are for the caller to deliver after the response.
+ */
 export type LogIngestResult =
-  | { ok: true; accepted: number; app_id: string; environment_id: string; logs: LogEventV1[] }
+  | {
+      ok: true;
+      accepted: number;
+      app_id: string;
+      environment_id: string;
+      source: LogSource;
+      sinks: Partial<Record<LogSink, StoredLogV1[]>>;
+    }
   | { ok: false; status: number; error: string; details?: string[] };
+
+const QUOTA_WINDOW_MS = 60 * 1000;
 
 export type EndpointEvent = EventV1 & { upstream_sampled?: boolean };
 export type OtlpEndpointEvent = EndpointEvent & { environment?: string };
@@ -365,8 +389,13 @@ export class AppHealthService {
   }
 
   /** Query the latest retained 4xx/5xx details for one app environment. */
-  /** Authenticated ingest of owner-authored application logs. */
-  async ingestLogs(rawKey: string, body: unknown, now: number): Promise<LogIngestResult> {
+  /** Server ingest of owner-authored application logs, authenticated with a product ingest key. */
+  async ingestLogs(
+    rawKey: string,
+    body: unknown,
+    now: number,
+    routes: LogRoutesV1 = defaultLogRoutes(),
+  ): Promise<LogIngestResult> {
     const keyRecord = await this.verifyIngestKey(rawKey);
     if (!keyRecord) return { ok: false, status: 401, error: 'invalid or revoked ingest key' };
     const validation = validateLogBatch(body);
@@ -375,27 +404,99 @@ export class AppHealthService {
     }
     const resolution = await this.resolveScope(keyRecord, validation.batch.environment, now);
     if (!resolution.ok) return resolution;
-    const { app_id, environment_id } = resolution.scope;
-    await this.repos.logs?.recordLogs(app_id, environment_id, validation.batch.logs);
-    return {
-      ok: true,
-      accepted: validation.batch.logs.length,
-      app_id,
-      environment_id,
-      logs: validation.batch.logs,
-    };
+    return this.commitLogs(resolution.scope, validation.batch.logs, 'server', routes);
+  }
+
+  /**
+   * Browser ingest with a public key carried in the body. The key pins one
+   * environment and an origin allowlist; batches are rate limited per key.
+   */
+  async ingestBrowserLogs(
+    body: unknown,
+    origin: string | null,
+    now: number,
+    routes: LogRoutesV1 = defaultLogRoutes(),
+  ): Promise<LogIngestResult> {
+    const validation = validateBrowserLogBatch(body);
+    if (!validation.ok) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'invalid browser log batch',
+        details: validation.errors,
+      };
+    }
+    const key = await this.repos.publicKeys?.verifyPublicKey(validation.batch.public_key);
+    if (!key) return { ok: false, status: 401, error: 'invalid or revoked public key' };
+    if (!origin || !key.allowed_origins.includes(origin)) {
+      return { ok: false, status: 403, error: 'origin not allowed for this key' };
+    }
+    const environment = await this.repos.environments.getEnvironment(key.environment_id);
+    if (!environment) return { ok: false, status: 401, error: 'public key environment missing' };
+    if (validation.batch.environment && validation.batch.environment !== environment.name) {
+      return { ok: false, status: 400, error: 'environment does not match public key scope' };
+    }
+    const windowStart = Math.floor(now / QUOTA_WINDOW_MS) * QUOTA_WINDOW_MS;
+    const used = await this.repos.publicKeys!.consumeBrowserQuota(
+      key.id,
+      windowStart,
+      validation.batch.logs.length,
+    );
+    if (used > BROWSER_LOGS_PER_MINUTE) {
+      return { ok: false, status: 429, error: 'browser log rate limit exceeded' };
+    }
+    const scope = { app_id: key.app_id, environment_id: environment.id };
+    return this.commitLogs(scope, validation.batch.logs, 'browser', routes);
+  }
+
+  private async commitLogs(
+    scope: ResolvedScope,
+    logs: readonly LogEventV1[],
+    source: LogSource,
+    routes: LogRoutesV1,
+  ): Promise<LogIngestResult> {
+    const stored = logs.map((log) => ({ ...log, source }));
+    const sinks = routeLogs(stored, routes);
+    if (sinks.store) {
+      await this.repos.logs?.recordLogs(scope.app_id, scope.environment_id, sinks.store, source);
+    }
+    return { ok: true, accepted: logs.length, ...scope, source, sinks };
+  }
+
+  async createPublicKey(
+    request: CreatePublicLogKeyRequestV1,
+    now: number,
+  ): Promise<CreatePublicLogKeyResponseV1 | null> {
+    const environment = await this.repos.environments.getEnvironment(request.environment_id);
+    if (!environment || environment.app_id !== request.app_id || !this.repos.publicKeys)
+      return null;
+    const created = await this.repos.publicKeys.createPublicKey(
+      request.app_id,
+      request.environment_id,
+      request.allowed_origins,
+      now,
+    );
+    return { key: created.rawKey, record: created.record };
+  }
+
+  async listPublicKeys(appId: string): Promise<PublicLogKeyV1[]> {
+    return (await this.repos.publicKeys?.listPublicKeys(appId)) ?? [];
+  }
+
+  async revokePublicKey(keyId: string, now: number): Promise<boolean> {
+    return (await this.repos.publicKeys?.revokePublicKey(keyId, now)) ?? false;
   }
 
   async queryLogs(
     appId: string,
     envId: string,
-    level: LogLevel,
-    event: string | undefined,
-    limit: number,
+    filters: { level: LogLevel; source?: LogSource; event?: string; limit: number },
     now: number,
   ): Promise<LogQueryResponseV1> {
+    const { level, source, event, limit } = filters;
     const logs =
-      (await this.repos.logs?.listLogs(appId, envId, { minLevel: level, event, limit })) ?? [];
+      (await this.repos.logs?.listLogs(appId, envId, { minLevel: level, source, event, limit })) ??
+      [];
     return LogQueryResponseV1.parse({
       refreshed_at: now,
       level,
