@@ -4,7 +4,7 @@
 
 ## Purpose
 
-App Health replaces fragmented checks across error, analytics, messaging, and cloud consoles with aggregate route traffic, latency, error, and freshness summaries. It stores no request bodies, parameters, identities, logs, or stack traces.
+App Health replaces fragmented checks across error, analytics, messaging, and cloud consoles with aggregate route traffic, latency, error, and freshness summaries. It stores no request bodies, parameters, identities, or stack traces from traffic; application logs are separate events your code explicitly sends.
 
 The production dashboard and ingest service are live. New evaluators should start with the install guide and verified release history; the hosted operator dashboard is private and has no public signup.
 

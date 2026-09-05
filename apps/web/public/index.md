@@ -21,7 +21,7 @@ Instead of opening separate error, analytics, messaging, and cloud consoles to u
 ## Public boundary
 
 - Aggregate endpoint latency, status, and availability summaries
-- No request bodies, headers, cookies, query values, identities, logs, or stack traces
+- Endpoint telemetry carries no request bodies, headers, cookies, query values, identities, or stack traces\n- Application logs are separate, explicit, owner-sent events (not derived from traffic)
 - Owner APIs remain authenticated and are not agent-indexed
 
 ## Access and next action
