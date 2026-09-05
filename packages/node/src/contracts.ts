@@ -33,3 +33,41 @@ export interface EventBatchV1 {
   release?: string;
   events: EventV1[];
 }
+
+// Application logs (owner-authored events). Mirrors packages/contracts/src/log.ts;
+// the parity test fails if the canonical bounds change without this table.
+export const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+export const LOG_EVENT_PATTERN = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
+export const LOG_BOUNDS = {
+  batch: 100,
+  event: 64,
+  title: 200,
+  description: 2000,
+  icon: 16,
+  props: 40,
+  propKey: 64,
+  propValue: 500,
+} as const;
+export const MAX_LOG_BATCH = LOG_BOUNDS.batch;
+export const MAX_LOG_PROPS = LOG_BOUNDS.props;
+
+export type LogPropValue = string | number | boolean | null;
+
+export interface LogEventV1 {
+  log_id: string;
+  timestamp: number;
+  event: string;
+  level: LogLevel;
+  title?: string;
+  description?: string;
+  icon?: string;
+  props: Record<string, LogPropValue>;
+}
+
+export interface LogBatchV1 {
+  batch_id: string;
+  schema_version: SchemaVersion;
+  environment?: string;
+  logs: LogEventV1[];
+}

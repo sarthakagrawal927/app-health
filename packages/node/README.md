@@ -38,6 +38,26 @@ await appHealth.close();
 Use `appHealth.diagnostics()` to inspect queued, sent, failed, retried, and
 dropped event counts locally.
 
+## Application logs
+
+Endpoint telemetry is derived from traffic and never carries identity. Logs are
+the opposite: explicit events your code chooses to send, with whatever detail
+you put in them. Use them for the moments you want to hear about.
+
+```ts
+appHealth.log('signup', { title: user.email, props: { plan: 'free' } });
+appHealth.log('waitlist.join', { title: email, icon: '📝', props: { source } });
+appHealth.log('payment.failed', { level: 'error', description: err.message });
+```
+
+`log()` is non-blocking and fails open like `record()`. Levels are `debug`,
+`info` (default), `warn`, and `error`. Event names are lowercase
+(`signup`, `waitlist.join`, `payment:failed`); props hold up to 40 strings,
+numbers, booleans, or nulls. Logs travel to `/v1/logs` on the same ingest host
+and appear in the dashboard's Logs tab within seconds, filterable by level and
+event. When the owner has configured a Slack webhook, logs at or above the
+configured level are posted there too.
+
 ## Hono on Cloudflare Workers
 
 Until npm publisher authentication is restored, install the same verified

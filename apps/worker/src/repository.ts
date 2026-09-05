@@ -15,6 +15,8 @@ import type {
   Runtime,
   EventV1,
   FailureEventV1,
+  LogEventV1,
+  LogLevel,
 } from '@app-health/contracts';
 
 /** Persisted app records. */
@@ -89,6 +91,23 @@ export interface FailureRepository {
     from: number,
     limit: number,
   ): Promise<FailureEventV1[]>;
+}
+
+/** Filters for reading retained application logs. */
+export interface LogListQuery {
+  /** Minimum level, inclusive. */
+  minLevel: LogLevel;
+  event?: string;
+  limit: number;
+}
+
+/**
+ * Owner-authored application logs. Unlike endpoint telemetry these are
+ * explicit events an application chose to send, retained for a bounded window.
+ */
+export interface LogRepository {
+  recordLogs(appId: string, envId: string, logs: readonly LogEventV1[]): Promise<void>;
+  listLogs(appId: string, envId: string, query: LogListQuery): Promise<LogEventV1[]>;
 }
 
 interface ObservedEndpoint {
@@ -168,6 +187,7 @@ export interface AppHealthRepositories {
   dedupe: DedupeRepository;
   inventory?: EndpointInventoryRepository;
   failures?: FailureRepository;
+  logs?: LogRepository;
   buckets: BucketRepository;
   setup?: SetupRepository;
 }

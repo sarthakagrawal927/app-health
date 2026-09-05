@@ -6,7 +6,7 @@
 // are bounded with exponential backoff and only applied to transient errors
 // (network failures, 5xx, 429). Non-retryable 4xx responses fail fast.
 
-import type { EventBatchV1 } from './contracts.js';
+import type { EventBatchV1, LogBatchV1 } from './contracts.js';
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<{ status: number }>;
 
@@ -30,7 +30,7 @@ export type TransportResult =
  * Returns a structured result; never throws.
  */
 export async function sendBatch(
-  batch: EventBatchV1,
+  batch: EventBatchV1 | LogBatchV1,
   options: TransportOptions,
 ): Promise<TransportResult> {
   const fetchFn = options.fetch ?? fetch;

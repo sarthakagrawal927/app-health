@@ -43,6 +43,8 @@
     "APP_HEALTH_INGEST_HOST": "ingest.sassmaker.com",
     "APP_HEALTH_INGEST_ORIGIN": "https://ingest.sassmaker.com",
     "CLOUDFLARE_ACCOUNT_ID": "7d048325699a5acddb44d3be31cf6ba9",
+    // Application logs at or above this level are posted to LOG_ALERT_WEBHOOK_URL (a secret).
+    "LOG_ALERT_MIN_LEVEL": "info",
   },
   "env": {
     "local": {

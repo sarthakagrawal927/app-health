@@ -12,6 +12,7 @@ import type {
   EndpointAggregateV1,
   FailureEventV1,
   InstallationStatusV1,
+  LogEventV1,
 } from '@app-health/contracts';
 
 const STORAGE_KEY = 'app-health-v0-project';
@@ -72,6 +73,8 @@ function installFetch(options?: {
   failureRows?: FailureEventV1[];
   apps?: AppEnvironmentV1[];
   failureFail?: boolean;
+  logRows?: LogEventV1[];
+  logFail?: boolean;
   fail?: boolean;
 }) {
   const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
@@ -117,6 +120,23 @@ function installFetch(options?: {
         retention_hours: 24,
         limit: Number(url.searchParams.get('limit') ?? 50),
         failures: options?.failureRows ?? [],
+      });
+    }
+    if (url.pathname === '/v1/logs') {
+      if (options?.logFail) return new Response(null, { status: 503 });
+      const minimum = url.searchParams.get('level') ?? 'debug';
+      const order = ['debug', 'info', 'warn', 'error'];
+      const eventFilter = url.searchParams.get('event');
+      return Response.json({
+        refreshed_at: Date.now(),
+        level: minimum,
+        retention_days: 30,
+        limit: Number(url.searchParams.get('limit') ?? 100),
+        logs: (options?.logRows ?? []).filter(
+          (row) =>
+            order.indexOf(row.level) >= order.indexOf(minimum) &&
+            (!eventFilter || row.event === eventFilter),
+        ),
       });
     }
     return new Response(null, { status: 404 });
@@ -541,6 +561,98 @@ describe('App Health V0 UI', () => {
     expect(await screen.findByText('Can’t refresh endpoint data')).toBeTruthy();
     expect(screen.getByText(/application is unaffected/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+});
+
+describe('Logs view', () => {
+  const logRows: LogEventV1[] = [
+    {
+      log_id: '00000000-0000-4000-a000-000000000101',
+      timestamp: Date.now() - 5_000,
+      event: 'signup',
+      level: 'info',
+      title: 'ada@example.com',
+      props: { plan: 'free', seats: 2, trial: true, ref: null },
+    },
+    {
+      log_id: '00000000-0000-4000-a000-000000000102',
+      timestamp: Date.now() - 65_000,
+      event: 'payment.failed',
+      level: 'error',
+      icon: '💳',
+      description: 'card declined',
+      props: {},
+    },
+  ];
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', storage);
+    localStorage.clear();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProject));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('loads logs only after the owner opens Logs and filters by level and event', async () => {
+    const fetchMock = installFetch({ logRows });
+    render(<App />);
+    await screen.findAllByText('/orders');
+    const logCalls = () =>
+      fetchMock.mock.calls.filter(
+        ([input]) => input instanceof URL && input.pathname === '/v1/logs',
+      );
+    expect(logCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Logs' }));
+    expect(await screen.findByText('ada@example.com')).toBeTruthy();
+    expect(screen.getByText('payment.failed')).toBeTruthy();
+    expect(screen.getByText('card declined')).toBeTruthy();
+    expect(screen.getByText('plan')).toBeTruthy();
+    expect(screen.getByText('error')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Time window' })).toBeNull();
+    const firstCall = logCalls()[0][0] as URL;
+    expect(firstCall.searchParams.get('app_id')).toBe('app-test');
+    expect(firstCall.searchParams.get('level')).toBe('debug');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Minimum level' }), {
+      target: { value: 'warn' },
+    });
+    await waitFor(() => expect(screen.queryByText('ada@example.com')).toBeNull());
+    expect(screen.getByText('payment.failed')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Minimum level' }), {
+      target: { value: 'debug' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Event name' }), {
+      target: { value: 'signup' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(screen.queryByText('payment.failed')).toBeNull());
+    expect(screen.getByText('ada@example.com')).toBeTruthy();
+    const lastCall = logCalls().at(-1)?.[0] as URL;
+    expect(lastCall.searchParams.get('event')).toBe('signup');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(logCalls().length).toBeGreaterThan(3));
+  });
+
+  it('shows the empty state with a next action and recovers from an API failure', async () => {
+    installFetch({ logRows: [] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Logs' }));
+    expect(await screen.findByText('No logs match')).toBeTruthy();
+    expect(screen.getByText(/POST/)).toBeTruthy();
+  });
+
+  it('keeps the shell usable when logs cannot load', async () => {
+    installFetch({ logFail: true });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Logs' }));
+    expect(await screen.findByText('Logs are unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Endpoints' })).toBeTruthy();
   });
 });
 

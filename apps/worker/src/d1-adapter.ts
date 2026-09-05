@@ -6,7 +6,9 @@ import type {
   Runtime,
   EventV1,
   FailureEventV1,
+  LogEventV1,
 } from '@app-health/contracts';
+import { LOG_LEVELS } from '@app-health/contracts';
 import { generateRawKey, hashKey } from './crypto.js';
 import type {
   AppHealthRepositories,
@@ -15,6 +17,8 @@ import type {
   DedupeRepository,
   EndpointInventoryRepository,
   FailureRepository,
+  LogListQuery,
+  LogRepository,
   EnvironmentRepository,
   InstallationRepository,
   KeyRepository,
@@ -54,6 +58,7 @@ export class D1ControlPlane
     DedupeRepository,
     EndpointInventoryRepository,
     FailureRepository,
+    LogRepository,
     SetupRepository
 {
   constructor(private readonly db: D1DatabaseLike) {}
@@ -67,6 +72,7 @@ export class D1ControlPlane
       dedupe: this,
       inventory: this,
       failures: this,
+      logs: this,
       buckets,
       setup: this,
     };
@@ -393,6 +399,58 @@ export class D1ControlPlane
     ).results;
   }
 
+  async recordLogs(appId: string, envId: string, logs: readonly LogEventV1[]): Promise<void> {
+    if (logs.length === 0) return;
+    const results = await this.db.batch(
+      logs.map((log) =>
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO log_events (log_id, app_id, environment_id, timestamp, event, level, title, description, icon, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .bind(
+            log.log_id,
+            appId,
+            envId,
+            log.timestamp,
+            log.event,
+            log.level,
+            log.title ?? null,
+            log.description ?? null,
+            log.icon ?? null,
+            JSON.stringify(log.props),
+          ),
+      ),
+    );
+    if (results.some((result) => !result.success)) throw new Error('D1 log insert failed');
+  }
+  async listLogs(appId: string, envId: string, query: LogListQuery): Promise<LogEventV1[]> {
+    const levels = LOG_LEVELS.slice(LOG_LEVELS.indexOf(query.minLevel));
+    const binds: unknown[] = [appId, envId, ...levels];
+    let where = `app_id = ? AND environment_id = ? AND level IN (${levels.map(() => '?').join(', ')})`;
+    if (query.event !== undefined) {
+      where += ' AND event = ?';
+      binds.push(query.event);
+    }
+    binds.push(query.limit);
+    const rows = (
+      await this.db
+        .prepare(
+          `SELECT log_id, timestamp, event, level, title, description, icon, props FROM log_events WHERE ${where} ORDER BY timestamp DESC, log_id DESC LIMIT ?`,
+        )
+        .bind(...binds)
+        .all<LogRow>()
+    ).results;
+    return rows.map(logFromRow);
+  }
+  async cleanupLogsExpired(before: number, limit: number): Promise<number> {
+    const result = await this.db
+      .prepare(
+        'DELETE FROM log_events WHERE rowid IN (SELECT rowid FROM log_events WHERE timestamp < ? ORDER BY timestamp LIMIT ?)',
+      )
+      .bind(before, limit)
+      .run();
+    return result.meta.changes ?? 0;
+  }
   async cleanupFailuresExpired(before: number, limit: number): Promise<number> {
     const result = await this.db
       .prepare(
@@ -451,4 +509,28 @@ export class D1ControlPlane
         .all<{ method: string; route: string; first_seen: number; last_seen: number }>()
     ).results;
   }
+}
+
+interface LogRow {
+  log_id: string;
+  timestamp: number;
+  event: string;
+  level: LogEventV1['level'];
+  title: string | null;
+  description: string | null;
+  icon: string | null;
+  props: string;
+}
+
+function logFromRow(row: LogRow): LogEventV1 {
+  return {
+    log_id: row.log_id,
+    timestamp: row.timestamp,
+    event: row.event,
+    level: row.level,
+    ...(row.title !== null ? { title: row.title } : {}),
+    ...(row.description !== null ? { description: row.description } : {}),
+    ...(row.icon !== null ? { icon: row.icon } : {}),
+    props: JSON.parse(row.props) as LogEventV1['props'],
+  };
 }

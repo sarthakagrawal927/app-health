@@ -8,11 +8,15 @@
 
 import {
   MAX_BATCH_EVENTS,
+  MAX_LOG_BATCH,
   SCHEMA_VERSION,
   type EventBatchV1,
   type EventV1,
+  type LogBatchV1,
+  type LogEventV1,
   type RuntimeField,
 } from './contracts.js';
+import { buildLogEventV1, deriveLogsEndpoint, type LogInput } from './log.js';
 import { createDiagnostics, type AppHealthDiagnostics } from './diagnostics.js';
 import {
   normalizeDuration,
@@ -22,7 +26,12 @@ import {
   normalizeStatus,
   normalizeTimestamp,
 } from './normalize.js';
-import { sendBatch, type FetchLike, type TransportResult } from './transport.js';
+import {
+  sendBatch,
+  type FetchLike,
+  type TransportOptions,
+  type TransportResult,
+} from './transport.js';
 import { randomUUID } from './uuid.js';
 
 /** Input accepted by `record()`. Only endpoint-summary fields are permitted. */
@@ -44,6 +53,8 @@ export interface AppHealthClientOptions {
   environment?: string;
   /** Absolute ingest URL, e.g. http://localhost:8787/v1/ingest. */
   endpoint: string;
+  /** Absolute logs URL. Defaults to `endpoint` with `/v1/ingest` replaced by `/v1/logs`. */
+  logsEndpoint?: string;
   /** Optional release tag applied to every event unless overridden. */
   release?: string;
   /** JavaScript runtime sending the batch. Defaults to `node`. */
@@ -73,6 +84,12 @@ export interface AppHealthClientOptions {
 export interface AppHealthClient {
   /** Queue one endpoint summary. Non-blocking; drops on overflow. */
   record(event: EventInput): void;
+  /**
+   * Queue one application log ("signup", "waitlist.join", "payment.failed").
+   * Non-blocking; invalid input is dropped and counted. Logs share the queue
+   * bound and flush cycle with endpoint events but travel to `/v1/logs`.
+   */
+  log(event: string, input?: LogInput): void;
   /** Flush all queued events with retries. Resolves when the drain completes. */
   flush(): Promise<void>;
   /** Stop the timer, flush remaining events, and resolve. */
@@ -92,13 +109,12 @@ const DEFAULTS = {
 
 type ResolvedClientConfig = {
   endpointUrl: string;
+  logsEndpointUrl: string;
   maxQueueSize: number;
   maxBatchSize: number;
+  logBatchSize: number;
   flushIntervalMs: number;
-  requestTimeoutMs: number;
-  maxRetries: number;
-  retryBackoffMs: number;
-  fetchFn: FetchLike | undefined;
+  transport: Omit<TransportOptions, 'endpoint'>;
   now: () => number;
   uuid: () => string;
   defaultRelease: string | undefined;
@@ -114,20 +130,33 @@ function resolveClientConfig(options: AppHealthClientOptions): ResolvedClientCon
   if (endpoint === null) {
     throw new Error('@saas-maker/app-health: createAppHealthClient requires an http(s) `endpoint`');
   }
+  const logsEndpoint =
+    options.logsEndpoint === undefined
+      ? deriveLogsEndpoint(endpoint)
+      : parseEndpoint(options.logsEndpoint);
+  if (logsEndpoint === null) {
+    throw new Error('@saas-maker/app-health: logsEndpoint must be an http(s) URL');
+  }
   const runtime = options.runtime ?? 'node';
   if (runtime !== 'node' && runtime !== 'worker') {
     throw new Error('@saas-maker/app-health: runtime must be `node` or `worker`');
   }
   const opts = { ...DEFAULTS, ...options };
+  const maxBatchSize = boundedInteger('maxBatchSize', opts.maxBatchSize, 1, MAX_BATCH_EVENTS);
   return {
     endpointUrl: endpoint,
+    logsEndpointUrl: logsEndpoint,
     maxQueueSize: boundedInteger('maxQueueSize', opts.maxQueueSize, 1, 1_000_000),
-    maxBatchSize: boundedInteger('maxBatchSize', opts.maxBatchSize, 1, MAX_BATCH_EVENTS),
+    maxBatchSize,
+    logBatchSize: Math.min(maxBatchSize, MAX_LOG_BATCH),
     flushIntervalMs: boundedInteger('flushIntervalMs', opts.flushIntervalMs, 1, 60 * 60 * 1000),
-    requestTimeoutMs: boundedInteger('requestTimeoutMs', opts.requestTimeoutMs, 1, 60_000),
-    maxRetries: boundedInteger('maxRetries', opts.maxRetries, 0, 10),
-    retryBackoffMs: boundedInteger('retryBackoffMs', opts.retryBackoffMs, 0, 60_000),
-    fetchFn: options.fetch,
+    transport: {
+      key: options.key,
+      requestTimeoutMs: boundedInteger('requestTimeoutMs', opts.requestTimeoutMs, 1, 60_000),
+      maxRetries: boundedInteger('maxRetries', opts.maxRetries, 0, 10),
+      retryBackoffMs: boundedInteger('retryBackoffMs', opts.retryBackoffMs, 0, 60_000),
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+    },
     now: options.now ?? (() => Date.now()),
     uuid: options.randomUUID ?? randomUUID,
     defaultRelease: normalizeRelease(options.release),
@@ -136,25 +165,35 @@ function resolveClientConfig(options: AppHealthClientOptions): ResolvedClientCon
   };
 }
 
-export function createAppHealthClient(options: AppHealthClientOptions): AppHealthClient {
-  const {
-    endpointUrl,
-    maxQueueSize,
-    maxBatchSize,
-    flushIntervalMs,
-    requestTimeoutMs,
-    maxRetries,
-    retryBackoffMs,
-    fetchFn,
-    now,
-    uuid,
-    defaultRelease,
-    environment,
-    runtime,
-  } = resolveClientConfig(options);
+interface ClientState {
+  cfg: ResolvedClientConfig;
+  queue: EventV1[];
+  logQueue: LogEventV1[];
+  diag: ReturnType<typeof createDiagnostics>;
+}
 
-  const diag = createDiagnostics();
-  const queue: EventV1[] = [];
+async function drainQueues({ cfg, queue, logQueue, diag }: ClientState): Promise<void> {
+  const send = async (batch: EventBatchV1 | LogBatchV1, endpoint: string, items: unknown[]) => {
+    diag.setQueued(queue.length + logQueue.length);
+    const result: TransportResult = await sendBatch(batch, { ...cfg.transport, endpoint });
+    recordDeliveryResult(result, items, diag);
+  };
+  while (queue.length > 0) {
+    const events = queue.splice(0, cfg.maxBatchSize);
+    const batch = buildBatch(events, cfg.uuid, cfg.runtime, cfg.environment, cfg.defaultRelease);
+    await send(batch, cfg.endpointUrl, events);
+  }
+  while (logQueue.length > 0) {
+    const logs = logQueue.splice(0, cfg.logBatchSize);
+    await send(buildLogBatch(logs, cfg.uuid, cfg.environment), cfg.logsEndpointUrl, logs);
+  }
+}
+
+export function createAppHealthClient(options: AppHealthClientOptions): AppHealthClient {
+  const cfg = resolveClientConfig(options);
+  const state: ClientState = { cfg, queue: [], logQueue: [], diag: createDiagnostics() };
+  const { queue, logQueue, diag } = state;
+  const queued = () => queue.length + logQueue.length;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
   let flushing: Promise<void> | null = null;
@@ -169,90 +208,54 @@ export function createAppHealthClient(options: AppHealthClientOptions): AppHealt
           /* errors are recorded in diagnostics */
         })
         .finally(() => {
-          if (queue.length > 0) scheduleFlush();
+          if (queued() > 0) scheduleFlush();
         });
-    }, flushIntervalMs);
+    }, cfg.flushIntervalMs);
     if (typeof timer.unref === 'function') timer.unref();
   }
 
-  function record(event: EventInput): void {
+  /** Shared admission path: invalid items and overflow are dropped and counted, never thrown. */
+  function enqueue<T>(target: T[], item: T | null, batchSize: number): void {
     if (closed) return;
-    const v1Event = buildEventV1(event, {
-      now,
-      uuid,
-      defaultRelease,
-    });
-    if (v1Event === null) {
-      diag.increment('droppedInvalid');
-      return;
-    }
-    if (queue.length >= maxQueueSize) {
-      diag.increment('droppedOverflow');
-      return;
-    }
-    queue.push(v1Event);
-    diag.setQueued(queue.length);
+    if (item === null) return diag.increment('droppedInvalid');
+    if (queued() >= cfg.maxQueueSize) return diag.increment('droppedOverflow');
+    target.push(item);
+    diag.setQueued(queued());
     scheduleFlush();
-    if (queue.length >= maxBatchSize) {
+    if (target.length >= batchSize) {
       void flush().catch(() => {
-        /* recorded in diagnostics */
+        /* errors are recorded in diagnostics */
       });
     }
   }
 
-  async function flush(): Promise<void> {
-    if (closed && queue.length === 0) return;
+  function flush(): Promise<void> {
+    if (queued() === 0) return Promise.resolve();
     // Coalesce concurrent flush calls into a single drain.
-    if (flushing) return flushing;
-    flushing = (async () => {
-      try {
-        while (queue.length > 0 && !closed) {
-          const batch = queue.splice(0, maxBatchSize);
-          diag.setQueued(queue.length);
-          await deliver(batch);
-        }
-        // After close, drain remaining even though `closed` is true.
-        if (closed) {
-          while (queue.length > 0) {
-            const batch = queue.splice(0, maxBatchSize);
-            diag.setQueued(queue.length);
-            await deliver(batch);
-          }
-        }
-      } finally {
+    const run =
+      flushing ??
+      drainQueues(state).finally(() => {
         flushing = null;
-      }
-    })();
-    return flushing;
-  }
-
-  async function deliver(events: EventV1[]): Promise<void> {
-    if (events.length === 0) return;
-    const batch = buildBatch(events, uuid, runtime, environment, defaultRelease);
-    const result: TransportResult = await sendBatch(batch, {
-      endpoint: endpointUrl,
-      key: options.key,
-      requestTimeoutMs,
-      maxRetries,
-      retryBackoffMs,
-      ...(fetchFn ? { fetch: fetchFn } : {}),
-    });
-    recordDeliveryResult(result, events, diag);
+      });
+    flushing = run;
+    return run;
   }
 
   function close(): Promise<void> {
     if (closing) return closing;
     closed = true;
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
+    if (timer) clearTimeout(timer);
+    timer = null;
     closing = flush();
     return closing;
   }
 
+  const { now, uuid, defaultRelease } = cfg;
   return {
-    record,
+    record: (event) =>
+      enqueue(queue, buildEventV1(event, { now, uuid, defaultRelease }), cfg.maxBatchSize),
+    log: (event, input = {}) =>
+      enqueue(logQueue, buildLogEventV1(event, input, { now, uuid }), cfg.logBatchSize),
     flush,
     close,
     diagnostics: () => diag.snapshot(),
@@ -300,9 +303,22 @@ function buildBatch(
   };
 }
 
+function buildLogBatch(
+  logs: LogEventV1[],
+  uuid: () => string,
+  environment: string | undefined,
+): LogBatchV1 {
+  return {
+    batch_id: uuid(),
+    schema_version: SCHEMA_VERSION,
+    ...(environment !== undefined ? { environment } : {}),
+    logs,
+  };
+}
+
 function recordDeliveryResult(
   result: TransportResult,
-  events: EventV1[],
+  events: readonly unknown[],
   diag: ReturnType<typeof createDiagnostics>,
 ) {
   if (result.ok) {

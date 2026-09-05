@@ -24,7 +24,9 @@ import {
   type FailureEventV1,
   type InstallationStatusV1,
   type KeyRecordV1,
+  type LogEventV1,
   type Runtime,
+  logLevelAtLeast,
 } from '@app-health/contracts';
 import { generateRawKey, hashKey } from './crypto.js';
 import type {
@@ -36,6 +38,8 @@ import type {
   EnvironmentRepository,
   InstallationRepository,
   KeyRepository,
+  LogListQuery,
+  LogRepository,
 } from './repository.js';
 import { MAX_ENVIRONMENTS_PER_APP } from './repository.js';
 
@@ -91,6 +95,7 @@ export class InMemoryAdapter
     InstallationRepository,
     DedupeRepository,
     EndpointInventoryRepository,
+    LogRepository,
     BucketRepository
 {
   private readonly apps = new Map<string, AppV1>();
@@ -100,6 +105,7 @@ export class InMemoryAdapter
   private readonly installation = new Map<string, InstallationRow>();
   private readonly seenBatches = new Map<string, number>();
   private readonly failureEvents = new Map<string, EventV1>();
+  private readonly logEvents = new Map<string, LogEventV1>();
   private readonly observedEndpoints = new Map<
     string,
     { method: string; route: string; first_seen: number; last_seen: number }
@@ -124,6 +130,7 @@ export class InMemoryAdapter
       dedupe: this,
       inventory: this,
       failures: this,
+      logs: this,
       buckets: this,
     };
   }
@@ -406,6 +413,29 @@ export class InMemoryAdapter
     }
   }
 
+  async recordLogs(appId: string, envId: string, logs: readonly LogEventV1[]): Promise<void> {
+    for (const log of logs) {
+      const key = `${appId}|${envId}|${log.log_id}`;
+      if (!this.logEvents.has(key)) this.logEvents.set(key, log);
+    }
+  }
+  async listLogs(appId: string, envId: string, query: LogListQuery): Promise<LogEventV1[]> {
+    const prefix = `${appId}|${envId}|`;
+    return [...this.logEvents.entries()]
+      .filter(
+        ([key, log]) =>
+          key.startsWith(prefix) &&
+          logLevelAtLeast(log.level, query.minLevel) &&
+          (query.event === undefined || log.event === query.event),
+      )
+      .map(([, log]) => log)
+      .sort((left, right) =>
+        right.timestamp === left.timestamp
+          ? right.log_id.localeCompare(left.log_id)
+          : right.timestamp - left.timestamp,
+      )
+      .slice(0, query.limit);
+  }
   async listFailures(
     appId: string,
     envId: string,

@@ -293,12 +293,37 @@ averaging bucket percentiles. Bucket bounds are listed in
 identities remain visible even when Analytics Engine omits a sampled metric row;
 the dashboard shows those metric values as unavailable, never as false zeros.
 
+## Application logs
+
+Endpoint telemetry tells you how routes perform. Logs tell you what happened:
+a signup, a waitlist join, a failed payment. They are explicit, owner-authored
+events an application chooses to send, never derived from traffic.
+
+- `POST /v1/logs` on the ingest host accepts a `LogBatchV1` with the same
+  product ingest key as `/v1/ingest`. Each log has a lowercase `event` name, a
+  `level` (`debug`, `info`, `warn`, `error`), optional `title`, `description`,
+  `icon`, and up to 40 scalar `props`.
+- The dashboard's **Logs** tab lists them newest first, filterable by minimum
+  level and event name. `GET /v1/logs` serves the same query to the owner.
+- Rows live in D1 for 30 days and are pruned hourly.
+- Optional Slack alerts: set the `LOG_ALERT_WEBHOOK_URL` secret and the
+  `LOG_ALERT_MIN_LEVEL` var (default `info`) and every log at or above that
+  level is posted after the ingest response returns.
+- Node: `appHealth.log('signup', { title: user.email, props: { plan } })`.
+  Any runtime: copy `examples/dropin-log-client/ping.ts`, which posts one
+  batch per call with no dependencies. The Go SDK does not send logs yet.
+
+See [docs/logs.md](docs/logs.md) for the wiring guide and decision record.
+
 ## Privacy boundary
 
-V0 stores **only** method, normalized route, status code, duration, timestamp,
-and optional release. It MUST NOT store headers, cookies, query values, route
-parameter values, request or response bodies, user identity, logs, stack
-traces, or spans. The OTLP endpoint projects this allowlist from eligible
+Endpoint telemetry stores **only** method, normalized route, status code,
+duration, timestamp, and optional release. It MUST NOT store headers, cookies,
+query values, route parameter values, request or response bodies, user
+identity, stack traces, or spans, and it never infers logs from requests.
+Application logs are the one deliberate exception: they carry exactly what the
+owner's code passes to `log()`, are sent only when that code calls it, and are
+kept for a bounded 30 days. Nothing in a log is ever derived from a request. The OTLP endpoint projects this allowlist from eligible
 server spans and discards the rest; contract validators reject unknown fields,
 and both SDKs enforce the same boundary at capture time. Official adapters drop
 an event when no trusted framework route template exists rather than sending a
@@ -310,9 +335,10 @@ character set; unsafe free-form values are omitted.
 - `health.sassmaker.com` is the private owner-key-protected dashboard and owner API.
 - `ingest.sassmaker.com/v1/ingest` and `/v1/traces` accept only
   product-scoped bearer keys with an explicit client environment.
-- D1 stores control-plane records, bounded event-ID deduplication, and only the
-  normalized endpoint identity plus first/last seen; Analytics Engine stores
-  approved aggregate endpoint dimensions and counts.
+- D1 stores control-plane records, bounded event-ID deduplication, the
+  normalized endpoint identity plus first/last seen, and owner-authored
+  application logs for 30 days; Analytics Engine stores approved aggregate
+  endpoint dimensions and counts.
 - Direct `workers.dev` access is disabled. Missing bindings, owner or query
   credentials, or hostname settings fail closed.
 - The release uses the account's existing Workers subscription. It does not
@@ -323,5 +349,6 @@ character set; unsafe free-form values are omitted.
 The endpoint-only V0 is live on Cloudflare with both approved hostnames, D1,
 Analytics Engine, and owner/ingest key boundaries. Real Node and Go canaries
 proved creation, key handoff, ingest, connected state, and normalized endpoint
-inventory. Alerts, stored trace exploration, logs, and broader incident
-workflows remain explicitly out of scope.
+inventory. Owner-authored application logs with optional Slack alerts shipped
+alongside. Stored trace exploration and broader incident workflows remain
+explicitly out of scope.

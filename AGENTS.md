@@ -43,9 +43,12 @@ separate Go compatibility job that retains the tagged Echo release canary.
 - Production mode fails closed unless D1, Analytics Engine, the owner secret,
   query-token, and hostname configuration are complete. Ingest remains
   separately bearer-key authenticated.
-- V0 collects only method, normalized route, status, duration, timestamp, and
-  optional release. Never add capture of headers, cookies, query values,
-  route parameter values, bodies, identity, logs, stacks, or spans.
+- Endpoint telemetry collects only method, normalized route, status, duration,
+  timestamp, and optional release. Never add capture of headers, cookies,
+  query values, route parameter values, bodies, identity, stacks, or spans.
+- Application logs (`/v1/logs`, `client.log()`) are the deliberate exception:
+  explicit, owner-authored events carrying what the caller passes. Never derive
+  a log from request traffic, and keep the 30-day retention bounded.
 
 ## Wave status
 

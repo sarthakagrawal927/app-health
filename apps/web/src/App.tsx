@@ -3,6 +3,7 @@ import {
   DEGRADED_ERROR_RATE,
   DEGRADED_P95_MS,
   INSUFFICIENT_DATA_MIN_REQUESTS,
+  LOG_LEVELS,
   SEED_APP_ID,
   SEED_APP_NAME,
   SEED_ENV_ID,
@@ -17,6 +18,9 @@ import {
   type FailureQueryResponseV1,
   type InstallationStatusV1,
   type ListAppsResponseV1,
+  type LogEventV1,
+  type LogLevel,
+  type LogQueryResponseV1,
   type Runtime,
   type Window,
 } from '@app-health/contracts';
@@ -28,7 +32,7 @@ const STORAGE_KEY = 'app-health-v0-project';
 
 type SortKey = 'health' | 'requests' | 'error_rate' | 'p95' | 'last_seen';
 type SortDirection = 'asc' | 'desc';
-type DashboardView = 'endpoints' | 'data';
+type DashboardView = 'endpoints' | 'data' | 'logs';
 
 const WINDOW_LABELS: Record<Window, string> = {
   '15m': '15 minutes',
@@ -68,6 +72,13 @@ function ownerFetch(
 ): Promise<Response> {
   const url = typeof path === 'string' ? apiUrl(path) : path;
   return fetch(url, { ...init, headers: ownerHeaders(ownerToken, init.headers) });
+}
+
+/** Fetch an owner API URL and parse JSON, throwing on non-2xx so callers share one error path. */
+async function loadOwnerJson(url: URL, ownerToken: string): Promise<unknown> {
+  const response = await ownerFetch(url, ownerToken);
+  if (!response.ok) throw new Error(`API returned ${response.status}`);
+  return response.json();
 }
 
 function readProject(): SavedProject | null {
@@ -772,9 +783,7 @@ function DataReceived({
         url.searchParams.set('environment_id', project.environmentId);
         url.searchParams.set('window', windowKey);
         url.searchParams.set('limit', '50');
-        const response = await ownerFetch(url, ownerToken);
-        if (!response.ok) throw new Error(`API returned ${response.status}`);
-        const next = (await response.json()) as FailureQueryResponseV1;
+        const next = (await loadOwnerJson(url, ownerToken)) as FailureQueryResponseV1;
         if (!cancelled) {
           setData(next);
           setError(null);
@@ -951,6 +960,269 @@ function DataReceived({
   );
 }
 
+const LEVEL_FILTER_LABELS: Record<LogLevel, string> = {
+  debug: 'All levels',
+  info: 'Info and above',
+  warn: 'Warn and above',
+  error: 'Errors only',
+};
+
+const LEVEL_ICONS: Record<LogLevel, string> = { debug: '🔍', info: '🔔', warn: '⚠️', error: '🚨' };
+
+function formatPropValue(value: LogEventV1['props'][string]): string {
+  return value === null ? 'null' : String(value);
+}
+
+function LogRow({ log }: { log: LogEventV1 }): JSX.Element {
+  const props = Object.entries(log.props);
+  return (
+    <tr>
+      <td data-label="Level">
+        <span className={`log-level log-level-${log.level}`}>{log.level}</span>
+      </td>
+      <td data-label="Event">
+        <span className="log-icon" aria-hidden="true">
+          {log.icon ?? LEVEL_ICONS[log.level]}
+        </span>
+        <code className="route">{log.event}</code>
+      </td>
+      <td data-label="Detail" className="log-detail-cell">
+        {log.title ? <strong className="log-title">{log.title}</strong> : null}
+        {log.description ? <p className="log-description">{log.description}</p> : null}
+        {props.length > 0 ? (
+          <ul className="log-props" aria-label="Properties">
+            {props.map(([key, value]) => (
+              <li key={key}>
+                <b>{key}</b> {formatPropValue(value)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </td>
+      <td data-label="When" title={formatTimestamp(log.timestamp)}>
+        {formatAge(log.timestamp)}
+      </td>
+    </tr>
+  );
+}
+
+function LogsSurface({
+  data,
+  error,
+  loading,
+  onRefresh,
+}: {
+  data: LogQueryResponseV1 | null;
+  error: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+}): JSX.Element {
+  return (
+    <>
+      {error ? (
+        <div className="failure-error" role="alert">
+          <div>
+            <strong>Logs are unavailable</strong>
+            <p>{error}. Your application is unaffected; log delivery fails open.</p>
+          </div>
+          <button className="secondary-button" onClick={onRefresh}>
+            Try again
+          </button>
+        </div>
+      ) : null}
+      {loading && !data ? (
+        <div className="failure-loading" aria-label="Loading logs">
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : null}
+      {!loading && !error && data?.logs.length === 0 ? (
+        <div className="failure-empty">
+          <strong>No logs match</strong>
+          <p>
+            Send one from your app with <code>appHealth.log(&apos;signup&apos;, …)</code> or POST a
+            batch to <code>/v1/logs</code> with your ingest key. It appears here within seconds.
+          </p>
+        </div>
+      ) : null}
+      {data && data.logs.length > 0 ? (
+        <div className="table-scroll">
+          <table className="endpoint-table log-table">
+            <thead>
+              <tr>
+                <th>Level</th>
+                <th>Event</th>
+                <th>Detail</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.logs.map((log) => (
+                <LogRow key={log.log_id} log={log} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** Owner API URL scoped to the selected app and environment. */
+function scopedUrl(path: string, project: SavedProject): URL {
+  const url = apiUrl(path);
+  url.searchParams.set('app_id', project.appId);
+  url.searchParams.set('environment_id', project.environmentId);
+  return url;
+}
+
+interface LogsFilters {
+  level: LogLevel;
+  event: string;
+}
+
+interface LogsResult {
+  data: LogQueryResponseV1 | null;
+  error: string | null;
+  loading: boolean;
+}
+
+function LogsView({
+  project,
+  ownerToken,
+}: {
+  project: SavedProject;
+  ownerToken: string;
+}): JSX.Element {
+  const [filters, setFilters] = useState<LogsFilters>({ level: 'debug', event: '' });
+  const [result, setResult] = useState<LogsResult>({ data: null, error: null, loading: true });
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const url = scopedUrl('/v1/logs', project);
+    url.searchParams.set('level', filters.level);
+    if (filters.event) url.searchParams.set('event', filters.event);
+    url.searchParams.set('limit', '200');
+    setResult((previous) => ({ ...previous, loading: true }));
+    loadOwnerJson(url, ownerToken)
+      .then((data) => {
+        if (!cancelled)
+          setResult({ data: data as LogQueryResponseV1, error: null, loading: false });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        const error = cause instanceof Error ? cause.message : 'Could not load logs';
+        setResult((previous) => ({ ...previous, error, loading: false }));
+      });
+    const timer = window.setInterval(() => setRefresh((value) => value + 1), 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [ownerToken, project, filters, refresh]);
+
+  const { data, error, loading } = result;
+  const bump = () => setRefresh((value) => value + 1);
+  return (
+    <section className="data-surface" aria-busy={loading}>
+      <LogsToolbar
+        data={data}
+        loading={loading}
+        filters={filters}
+        onFilters={setFilters}
+        onRefresh={bump}
+      />
+      <LogsSurface data={data} error={error} loading={loading} onRefresh={bump} />
+    </section>
+  );
+}
+
+function LogsToolbar({
+  data,
+  loading,
+  filters,
+  onFilters,
+  onRefresh,
+}: {
+  data: LogQueryResponseV1 | null;
+  loading: boolean;
+  filters: LogsFilters;
+  onFilters: (update: (previous: LogsFilters) => LogsFilters) => void;
+  onRefresh: () => void;
+}): JSX.Element {
+  return (
+    <div className="surface-heading failure-heading log-heading">
+      <div>
+        <h2>Application logs</h2>
+        <span>
+          {data?.logs.length ?? 0} shown · kept {data?.retention_days ?? 30} days
+          {data ? ` · refreshed ${formatAge(data.refreshed_at)}` : ''}
+        </span>
+      </div>
+      <form
+        className="log-filters"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const next = String(new FormData(event.currentTarget).get('event') ?? '').trim();
+          onFilters((previous) => ({ ...previous, event: next }));
+        }}
+      >
+        <label>
+          Level
+          <select
+            aria-label="Minimum level"
+            value={filters.level}
+            onChange={(event) =>
+              onFilters((previous) => ({ ...previous, level: event.target.value as LogLevel }))
+            }
+          >
+            {LOG_LEVELS.map((value) => (
+              <option key={value} value={value}>
+                {LEVEL_FILTER_LABELS[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Event
+          <input
+            name="event"
+            aria-label="Event name"
+            placeholder="signup"
+            defaultValue={filters.event}
+          />
+        </label>
+        <button type="submit" className="secondary-button compact-button">
+          Apply
+        </button>
+        <button type="button" className="secondary-button compact-button" onClick={onRefresh}>
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+const VIEW_HEADINGS: Record<DashboardView, [string, string, string]> = {
+  endpoints: [
+    'Observed routes',
+    'Endpoint health',
+    'Traffic, errors, and latency from requests your service actually handled.',
+  ],
+  data: [
+    'Collection transparency',
+    'Data received',
+    'The exact telemetry App Health accepts and retains for this environment.',
+  ],
+  logs: [
+    'Application events',
+    'Logs',
+    'Signups, waitlist joins, failed payments: whatever your app chose to send, by level.',
+  ],
+};
+
 interface DashboardHandlers {
   onProjectChange: (project: SavedProject) => void;
   onReset: () => void;
@@ -1093,34 +1365,32 @@ function Dashboard({
           >
             Data received
           </button>
+          <button
+            aria-current={view === 'logs' ? 'page' : undefined}
+            onClick={() => setView('logs')}
+          >
+            Logs
+          </button>
         </nav>
         <div className="dashboard-heading">
           <div>
-            {view === 'endpoints' ? (
-              <>
-                <div className="eyebrow">Observed routes</div>
-                <h1>Endpoint health</h1>
-                <p>Traffic, errors, and latency from requests your service actually handled.</p>
-              </>
-            ) : (
-              <>
-                <div className="eyebrow">Collection transparency</div>
-                <h1>Data received</h1>
-                <p>The exact telemetry App Health accepts and retains for this environment.</p>
-              </>
-            )}
+            <div className="eyebrow">{VIEW_HEADINGS[view][0]}</div>
+            <h1>{VIEW_HEADINGS[view][1]}</h1>
+            <p>{VIEW_HEADINGS[view][2]}</p>
           </div>
-          <div className="window-control" aria-label="Time window">
-            {WINDOWS.map((value) => (
-              <button
-                key={value}
-                aria-pressed={windowKey === value}
-                onClick={() => setWindowKey(value)}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+          {view === 'logs' ? null : (
+            <div className="window-control" aria-label="Time window">
+              {WINDOWS.map((value) => (
+                <button
+                  key={value}
+                  aria-pressed={windowKey === value}
+                  onClick={() => setWindowKey(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {view === 'endpoints' ? (
           <>
@@ -1263,9 +1533,11 @@ function Dashboard({
               </span>
             </footer>
           </>
-        ) : (
+        ) : null}
+        {view === 'data' ? (
           <DataReceived project={project} ownerToken={ownerToken} windowKey={windowKey} />
-        )}
+        ) : null}
+        {view === 'logs' ? <LogsView project={project} ownerToken={ownerToken} /> : null}
       </main>
     </div>
   );

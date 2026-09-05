@@ -6,6 +6,8 @@
 import {
   BUCKET_MS,
   FAILURE_RETENTION_HOURS,
+  LOG_RETENTION_DAYS,
+  LogQueryResponseV1,
   WINDOW_MS,
   FailureQueryResponseV1,
   InstallationStatusV1,
@@ -13,6 +15,7 @@ import {
   buildSeedBuckets,
   mergeBuckets,
   validateBatch,
+  validateLogBatch,
   type CreateAppRequestV1 as CreateAppRequest,
   type CreateAppResponseV1,
   type EndpointQueryResponseV1,
@@ -21,6 +24,8 @@ import {
   type FailureQueryResponseV1 as FailureQueryResponse,
   type KeyRecordV1,
   type ListAppsResponseV1,
+  type LogEventV1,
+  type LogLevel,
   type Runtime,
   type Window,
 } from '@app-health/contracts';
@@ -31,6 +36,11 @@ import { isErrorStatus } from './in-memory-adapter.js';
 /** Result of an ingest attempt. */
 export type IngestResult =
   { ok: true; accepted: number; duplicates: number } | { ok: false; status: number; error: string };
+
+/** Result of a log ingest attempt. Accepted logs are returned so the caller can alert on them. */
+export type LogIngestResult =
+  | { ok: true; accepted: number; app_id: string; environment_id: string; logs: LogEventV1[] }
+  | { ok: false; status: number; error: string; details?: string[] };
 
 export type EndpointEvent = EventV1 & { upstream_sampled?: boolean };
 export type OtlpEndpointEvent = EndpointEvent & { environment?: string };
@@ -355,6 +365,46 @@ export class AppHealthService {
   }
 
   /** Query the latest retained 4xx/5xx details for one app environment. */
+  /** Authenticated ingest of owner-authored application logs. */
+  async ingestLogs(rawKey: string, body: unknown, now: number): Promise<LogIngestResult> {
+    const keyRecord = await this.verifyIngestKey(rawKey);
+    if (!keyRecord) return { ok: false, status: 401, error: 'invalid or revoked ingest key' };
+    const validation = validateLogBatch(body);
+    if (!validation.ok) {
+      return { ok: false, status: 400, error: 'invalid log batch', details: validation.errors };
+    }
+    const resolution = await this.resolveScope(keyRecord, validation.batch.environment, now);
+    if (!resolution.ok) return resolution;
+    const { app_id, environment_id } = resolution.scope;
+    await this.repos.logs?.recordLogs(app_id, environment_id, validation.batch.logs);
+    return {
+      ok: true,
+      accepted: validation.batch.logs.length,
+      app_id,
+      environment_id,
+      logs: validation.batch.logs,
+    };
+  }
+
+  async queryLogs(
+    appId: string,
+    envId: string,
+    level: LogLevel,
+    event: string | undefined,
+    limit: number,
+    now: number,
+  ): Promise<LogQueryResponseV1> {
+    const logs =
+      (await this.repos.logs?.listLogs(appId, envId, { minLevel: level, event, limit })) ?? [];
+    return LogQueryResponseV1.parse({
+      refreshed_at: now,
+      level,
+      retention_days: LOG_RETENTION_DAYS,
+      limit,
+      logs,
+    });
+  }
+
   async queryFailures(
     appId: string,
     envId: string,

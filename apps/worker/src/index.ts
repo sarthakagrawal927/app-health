@@ -5,6 +5,9 @@ import {
   FailureQueryRequestV1,
   InstallationStatusV1,
   ListAppsResponseV1,
+  LOG_RETENTION_DAYS,
+  LogLevelField,
+  LogQueryRequestV1,
   WINDOWS,
   type Window,
 } from '@app-health/contracts';
@@ -21,7 +24,8 @@ import {
   LocalOwnerIdentityAdapter,
   type OwnerIdentityAdapter,
 } from './identity.js';
-import { AppHealthService } from './service.js';
+import { AppHealthService, type LogIngestResult } from './service.js';
+import { deliverLogAlerts } from './log-alerts.js';
 import { InvalidOtlpError, otlpSuccessBody, projectOtlpTraces } from './otlp.js';
 import { handleAgentEdge } from './agent-edge.mjs';
 
@@ -36,6 +40,10 @@ export interface Env {
   OWNER_AUTH_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   ANALYTICS_ENGINE_QUERY_TOKEN?: string;
+  /** Optional Slack incoming-webhook URL for application log alerts. */
+  LOG_ALERT_WEBHOOK_URL?: string;
+  /** Minimum log level posted to the webhook: debug | info | warn | error. Default info. */
+  LOG_ALERT_MIN_LEVEL?: string;
   DB?: D1DatabaseLike;
   TELEMETRY?: AnalyticsEngineDatasetLike;
   ASSETS?: { fetch(request: Request): Promise<Response> };
@@ -177,6 +185,11 @@ function otlpContentType(request: Request): 'protobuf' | 'json' | null {
 }
 
 class BodyTooLargeError extends Error {}
+
+/** The subset of ExecutionContext the worker uses. Optional so tests and the Vite dev bridge can omit it. */
+interface WorkerContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
 class UnsupportedEncodingError extends Error {}
 
 function hostAllowed(url: URL, bundle: AdapterBundle, env: Env, kind: 'owner' | 'ingest'): boolean {
@@ -245,6 +258,83 @@ async function handleTracesRoute(
     if (error instanceof InvalidOtlpError) return json(400, { error: error.message });
     throw error;
   }
+}
+
+async function alertOnLogs(
+  result: LogIngestResult & { ok: true },
+  bundle: AdapterBundle,
+  env: Env,
+): Promise<void> {
+  if (!env.LOG_ALERT_WEBHOOK_URL) return;
+  const minLevel = LogLevelField.safeParse(env.LOG_ALERT_MIN_LEVEL);
+  const [app, environment] = await Promise.all([
+    bundle.repos.apps.getApp(result.app_id),
+    bundle.repos.environments.getEnvironment(result.environment_id),
+  ]);
+  await deliverLogAlerts(result.logs, {
+    webhookUrl: env.LOG_ALERT_WEBHOOK_URL,
+    minLevel: minLevel.success ? minLevel.data : 'info',
+    appName: app?.name ?? result.app_id,
+    environmentName: environment?.name ?? result.environment_id,
+  });
+}
+
+async function handleLogsIngestRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  env: Env,
+  url: URL,
+  ctx: WorkerContext | undefined,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/logs' || request.method !== 'POST') return null;
+  if (!hostAllowed(url, bundle, env, 'ingest')) return json(404, { error: 'not found' });
+  try {
+    const result = await bundle.service.ingestLogs(
+      extractBearerKey(request),
+      await readJsonBounded(request),
+      Date.now(),
+    );
+    if (!result.ok) return json(result.status, { error: result.error, details: result.details });
+    const alerts = alertOnLogs(result, bundle, env);
+    if (ctx) ctx.waitUntil(alerts);
+    else await alerts;
+    return json(202, { accepted: result.accepted });
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return json(413, { error: 'request body too large' });
+    throw error;
+  }
+}
+
+async function handleLogsQueryRoute(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response | null> {
+  if (url.pathname !== '/v1/logs') return null;
+  if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
+  const limitParam = url.searchParams.get('limit');
+  const parsed = LogQueryRequestV1.safeParse({
+    app_id: url.searchParams.get('app_id'),
+    environment_id: url.searchParams.get('environment_id'),
+    level: url.searchParams.get('level') ?? undefined,
+    event: url.searchParams.get('event') ?? undefined,
+    limit: limitParam === null ? undefined : Number(limitParam),
+  });
+  if (!parsed.success) return json(400, { error: 'invalid log query' }, true);
+  if (!ownerCanAccessApp(owner, parsed.data.app_id)) return productScopeForbidden();
+  return json(
+    200,
+    await bundle.service.queryLogs(
+      parsed.data.app_id,
+      parsed.data.environment_id,
+      parsed.data.level,
+      parsed.data.event,
+      parsed.data.limit,
+      Date.now(),
+    ),
+    true,
+  );
 }
 
 async function handleAppsRoute(
@@ -378,8 +468,43 @@ function handleEarlyRoutes(request: Request, env: Env, url: URL): Response | nul
   return null;
 }
 
+async function handleIngestHostRoutes(
+  request: Request,
+  bundle: AdapterBundle,
+  env: Env,
+  url: URL,
+  ctx: WorkerContext | undefined,
+): Promise<Response | null> {
+  const ingestResponse = await handleIngestRoute(request, bundle, env, url);
+  if (ingestResponse) return ingestResponse;
+  const tracesResponse = await handleTracesRoute(request, bundle, env, url);
+  if (tracesResponse) return tracesResponse;
+  return handleLogsIngestRoute(request, bundle, env, url, ctx);
+}
+
+async function handleOwnerRoutes(
+  request: Request,
+  bundle: AdapterBundle,
+  owner: { appId?: string },
+  url: URL,
+): Promise<Response> {
+  const handlers = [
+    handleAppsRoute,
+    handleRevokeRoute,
+    handleInstallationStatusRoute,
+    handleEndpointsRoute,
+    handleFailuresRoute,
+    handleLogsQueryRoute,
+  ];
+  for (const handler of handlers) {
+    const response = await handler(request, bundle, owner, url);
+    if (response) return response;
+  }
+  return json(404, { error: 'not found' });
+}
+
 const worker = {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: WorkerContext): Promise<Response> {
     const url = new URL(request.url);
     const earlyResponse = handleEarlyRoutes(request, env, url);
     if (earlyResponse) return earlyResponse;
@@ -387,11 +512,8 @@ const worker = {
     const bundle = await resolveAdapter(env);
     if (!bundle) return json(503, { error: 'production bindings are incomplete' }, true);
 
-    const ingestResponse = await handleIngestRoute(request, bundle, env, url);
-    if (ingestResponse) return ingestResponse;
-
-    const tracesResponse = await handleTracesRoute(request, bundle, env, url);
-    if (tracesResponse) return tracesResponse;
+    const ingestHostResponse = await handleIngestHostRoutes(request, bundle, env, url, ctx);
+    if (ingestHostResponse) return ingestHostResponse;
 
     if (!hostAllowed(url, bundle, env, 'owner')) return json(404, { error: 'not found' });
     if (!url.pathname.startsWith('/v1/')) {
@@ -401,23 +523,7 @@ const worker = {
 
     const owner = await bundle.identity.resolve(request);
     if (!owner) return json(403, { error: 'owner secret required' }, true);
-
-    const appsResponse = await handleAppsRoute(request, bundle, owner, url);
-    if (appsResponse) return appsResponse;
-
-    const revokeResponse = await handleRevokeRoute(request, bundle, owner, url);
-    if (revokeResponse) return revokeResponse;
-
-    const statusResponse = await handleInstallationStatusRoute(request, bundle, owner, url);
-    if (statusResponse) return statusResponse;
-
-    const endpointsResponse = await handleEndpointsRoute(request, bundle, owner, url);
-    if (endpointsResponse) return endpointsResponse;
-
-    const failuresResponse = await handleFailuresRoute(request, bundle, owner, url);
-    if (failuresResponse) return failuresResponse;
-
-    return json(404, { error: 'not found' });
+    return handleOwnerRoutes(request, bundle, owner, url);
   },
 
   async scheduled(_controller: unknown, env: Env): Promise<void> {
@@ -425,6 +531,7 @@ const worker = {
     const control = new D1ControlPlane(env.DB);
     await control.cleanupExpired(Date.now() - DEDUPE_WINDOW_MS, 10_000);
     await control.cleanupFailuresExpired(Date.now() - 24 * 60 * 60 * 1000, 10_000);
+    await control.cleanupLogsExpired(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000, 10_000);
   },
 };
 

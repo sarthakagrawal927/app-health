@@ -8,6 +8,7 @@ function clientSpy() {
   const flush = vi.fn(async () => {});
   const client: AppHealthClient = {
     record: (event) => events.push(event),
+    log: () => {},
     flush,
     close: async () => {},
     diagnostics: () => ({
